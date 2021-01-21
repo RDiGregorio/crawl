@@ -1,0 +1,496 @@
+bindkey = [s] CMD_NO_CMD_DEFAULT
+bindkey = [p] CMD_NO_CMD_DEFAULT
+
+travel_delay = -1
+travel_key_stop = false
+show_travel_trail = false
+rest_delay = -1
+explore_auto_rest = true
+rest_wait_both = true
+show_more = false
+automagic_enable = true
+
+force_more_message += flicker back into view
+force_more_message += you miscast
+force_more_message += know that spell
+force_more_message += resists
+force_more_message += struggles to resist
+force_more_message += calcifying dust
+force_more_message += unable to access your magic
+force_more_message += too confused to cast spells
+force_more_message += wracked with pain
+force_more_message += powers of darkness
+force_more_message += horrible wounds
+force_more_message += back to life
+force_more_message += smites you
+force_more_message += autopickup
+force_more_message += back at you
+force_more_message += transformation is almost over
+force_more_message += magic feels tainted
+force_more_message += feel yourself slow down
+force_more_message += winds around you calm down
+force_more_message += translocation energy dissipates
+force_more_message += mighty Pandemonium lord
+force_more_message += grow feeble
+force_more_message += being watched
+
+runrest_stop_message += transformation is almost over
+runrest_stop_message += back to life
+
+explore_stop = stairs, shops, altars, portals, branches, runed_doors
+explore_stop += greedy_pickup
+
+autopickup_exceptions += brilliance, holy word, silence
+autopickup_exceptions += brilliance, holy word, silence
+autopickup_exceptions += polymorph, random effects
+
+message_colour += mute:Cannot currently process new keys
+
+############################################################################
+# build setup                                                              #
+############################################################################
+
+species = ho
+background = be
+weapon = hand axe
+default_manual_training = true
+
+:function ready()
+:  if you.turns() == 0 then
+:    you.train_skill("Axes", 2)
+:    you.train_skill("Armour", 1)
+:    you.train_skill("Fighting", 1)
+:    you.train_skill("Dodging", 0)
+:  end
+:  if in_last_message("explore") or in_last_message("exploring") then
+:    -- todo: done exploring
+:  end
+:end
+
+############################################################################
+# exploration                                                              #
+############################################################################
+
+macros += M o ===explore
+
+:function must_rest()
+:  return you.status("berserk cooldown") or you.slowed()
+:end
+
+:function explore()
+:  if is_safe() then
+:    if you.berserk() or must_rest() then
+:      crawl.sendkeys("5")
+:      return
+:    end
+:    if upgrade_equipment() then
+:      return
+:    end
+:    if ready_to_identify_items() and identify_items() then
+:      return
+:    end
+:    if remove_curse() then
+:      return
+:    end
+:    if drop_junk() then
+:      return
+:    end
+:  end
+:  crawl.sendkeys("o")
+:end
+
+############################################################################
+# item dropping                                                            #
+############################################################################
+
+:function drop_junk()
+:  for item in inventory() do
+:    if is_junk(item) then
+:      if not (item.cursed and item.equipped) then
+:        drop(item)
+:        return true
+:      end
+:    end
+:  end
+:  return false
+:end
+
+:function drop(item)
+:  local letter = items.index_to_letter(item.slot)
+:  crawl.sendkeys("d" .. letter .. string.char(13))
+:end
+
+:function is_junk_weapon(item)
+:  if item.class(true) == "weapon" then
+:    for other in inventory() do
+:      if compare_weapons(item, other) < 0 then
+:        return true
+:      end
+:    end
+:  end
+:  return false
+:end
+
+:function is_junk_armour(item)
+:  if item.class(true) == "armour"  and not item.branded then
+:    for other in inventory() do
+:      if compare_armour(item, other) < 0 then
+:        return true
+:      end
+:    end
+:  end
+:  return false
+:end
+
+:function is_junk(item)
+:  if is_junk_weapon(item) or is_junk_armour(item) then
+:    return true
+:  end
+:  local junk_egos = {
+:    "harm"
+:  }
+:  local junk_subtypes = {
+:    "degeneration",
+:    "lignification",
+:    "brilliance",
+:    "holy word",
+:    "silence",
+:    "immolation",
+:    "noise",
+:    "random uselessness",
+:    "torment",
+:    "vulnerability"
+:  }
+:  for index, ego in ipairs(junk_egos) do
+:    if item.ego(true) == ego then 
+:      return true
+:    end
+:  end
+:  for index, subtype in ipairs(junk_subtypes) do
+:    if item.subtype() == subtype then 
+:      return true
+:    end
+:  end
+:  return false
+:end
+
+############################################################################
+# autopickup                                                               #
+############################################################################
+
+:function want_weapon(item)
+:  if item.class(true) == "weapon" and uses_weapon_skill(item) then
+:    local best = best_damage(item.weap_skill)
+:    if item.damage > best then
+:      return true
+:    end
+:    if item.damage == best then
+:      return item.branded
+:    end
+:  end
+:  return false
+:end
+
+:function want_armour(item)
+:  if item.class(true) == "armour" and not is_useless_armour(item) then
+:    local best = best_ac(item.subtype())
+:    if item.ac > best then
+:      return true
+:    end
+:    if item.subtype() == "helmet" or
+:        item.subtype() == "cloak" or
+:        item.damage == best then
+:      return item.branded
+:    end
+:  end
+:  return false
+:end
+
+:function want_magic(item)
+:  if item.subtype() == "amnesia" then
+:    return true
+:  end
+:  if item.class(true) == "book" and not item.is_useless then
+:    return true
+:  end
+:  return false
+:end
+
+:function autopickup(item, name)
+:  if item.artefact then
+:    -- todo: improve this, set to true for debugging
+:    return true
+:  end
+:  if want_magic(item) then
+:    return true
+:  end
+:  if want_weapon(item) then
+:    return true
+:  end
+:  if want_armour(item) then
+:    return true
+:  end
+:end
+
+:add_autopickup_func(autopickup)
+
+############################################################################
+# equipment                                                                #
+############################################################################
+
+:function uses_weapon_skill(item)
+:  return item.weap_skill == "Axes"
+:end
+
+:function equipped_at(subtype)
+:  local translations = {
+:    cloak = "Cloak",
+:    helmet = "Helmet",
+:    gloves = "Gloves",
+:    boots = "Boots",
+:    body = "Armour",
+:    shield = "Shield"
+:  }
+:  return items.equipped_at(translations[subtype])
+:end
+
+:function upgrade_equipment()
+:  for item in inventory() do
+:    if item.class(true) == "weapon" then
+:      local equipped = items.equipped_at("Weapon")
+:      if not item.fully_identified or
+:          not equipped or
+:          compare_weapons(item, equipped) > 0 then
+:        item.wield()
+:        return true
+:      end
+:    end
+:    if item.class(true) == "armour" and not is_useless_armour(item) then
+:      local equipped = equipped_at(item.subtype())
+:      if not item.fully_identified or
+:          not equipped or
+:          compare_armour(item, equipped) > 0 then
+:        item.wear()
+:        return true
+:      end
+:    end
+:  end
+:  return false
+:end
+
+############################################################################
+# curse removal                                                            #
+############################################################################
+
+:function scroll_of_remove_curse_letter()
+:  for item in inventory() do
+:    if item.class(true) == "scroll" and
+:        item.subtype() == "remove curse" then
+:      return items.index_to_letter(item.slot)
+:    end
+:  end
+:end
+
+:function remove_curse()
+:  local rc_letter = scroll_of_remove_curse_letter()
+:  if rc_letter then
+:    for item in inventory() do
+:      if item.cursed then
+:        return read_scroll(rc_letter)
+:      end
+:    end
+:  end
+:  return false
+:end
+
+############################################################################
+# item identification                                                      #
+############################################################################
+
+:function scroll_of_identify_letter()
+:  for item in inventory() do
+:    if item.class(true) == "scroll" and item.subtype() == "identify" then
+:      return items.index_to_letter(item.slot)
+:    end
+:  end
+:end
+
+:function ready_to_identify_items()
+:  if scroll_of_identify_letter() then
+:    return true
+:  end
+:  for item in inventory() do
+:    if (item.class(true) == "potion" or is_amulet(item)) and
+:        not item.fully_identified then
+:      return true
+:    end
+:  end
+:  return false
+:end
+
+:function identify_items()
+:  local id_letter = scroll_of_identify_letter()
+:  for item in inventory() do
+:    if item.class(true) == "scroll" and not item.fully_identified then
+:      return read_scroll(items.index_to_letter(item.slot))
+:    end
+:    if (item.class(true) == "potion" or is_amulet(item)) and
+:        not item.fully_identified and
+:        id_letter then
+:      return read_scroll(id_letter .. items.index_to_letter(item.slot))
+:    end
+:  end
+:  return false
+:end
+
+############################################################################
+# item utility                                                             #
+############################################################################
+
+:function inventory()
+:  return iter.invent_iterator:new(items.inventory())
+:end
+
+:function is_amulet(item)
+:  if item.class(true) == "jewellery" then
+:    return item.name():find("amulet")
+:  end
+:  return false
+:end
+
+:function read_scroll(letter)
+:  if you.silenced() then
+:    return false
+:  end
+:  crawl.sendkeys("r" .. letter)
+:  return true
+:end
+
+############################################################################
+# weapon and armour utility                                                #
+############################################################################
+
+:function compare_weapons(left, right)
+:  -- todo: handle artefacts
+:  -- todo: handle egos
+:  if left.artefact or right.artefact then
+:    return 0
+:  end
+:  if not left.class(true) == "weapon" or
+:      not right.class(true) == "weapon" then
+:    return 0
+:  end
+:  if not (left.weap_skill == right.weap_skill) then
+:    return 0
+:  end
+:  if not left.fully_identified or not right.fully_identified then
+:    return 0
+:  end
+:  return compare(left.damage + left.plus, right.damage + right.plus)
+:end
+
+:function compare_armour(left, right)
+:  -- todo: handle artefacts
+:  -- todo: handle egos
+:  if left.artefact or right.artefact then
+:    return 0
+:  end
+:  if not left.class(true) == "armour" or
+:      not right.class(true) == "armour" then
+:    return 0
+:  end
+:  if not (left.subtype() == right.subtype()) then
+:    return 0
+:  end
+:  if not left.fully_identified or not right.fully_identified then
+:    return 0
+:  end
+:  return compare(left.ac + left.plus, right.ac + right.plus)
+:end
+
+:function best_damage(weap_skill)
+:  local result = 0
+:  for item in inventory() do
+:    if item.weap_skill == weap_skill and item.damage > result then
+:      result = item.damage
+:    end
+:  end
+:  return result
+:end
+
+:function best_ac(subtype)
+:  local result = 0
+:  for item in inventory() do
+:    if item.subtype() == subtype and item.ac > result then
+:      result = item.ac
+:    end
+:  end
+:  return result
+:end
+
+:function is_useless_armour(item)
+:  if item.name():find("barding") then
+:    return true
+:  end
+:  if item.subtype() == "shield" then
+:    return true
+:  end
+:  return false
+:end
+
+############################################################################
+# general utility                                                          #
+############################################################################
+
+:function is_safe()
+: for a = -8,8 do
+:    for b = -8,8 do
+:       c = monster.get_monster_at(a, b)
+:       if c and not c.is_safe(c) then
+:         return false
+:       end
+:    end
+: end
+: return true
+:end
+
+:function in_last_message(message)
+:  return crawl.messages(1):find(message)
+:end
+
+:function print(value)
+:  crawl.mpr(tostring(value))
+:end
+
+:function compare(left, right)
+:  if left < right then
+:    return -1
+:  end
+:  if left > right then
+:    return 1
+:  end
+:  return 0
+:end
+
+############################################################################
+# hooks                                                                    #
+############################################################################
+
+:function c_answer_prompt(prompt)
+:  if prompt:find("Keep disrobing") or prompt:find("Keep equipping") then
+:    return false
+:  end
+:  if prompt:find("Really unwield") or
+:      prompt:find("Really take off") or
+:      prompt:find("Really remove") or
+:      prompt:find("Really wield") or
+:      prompt:find("Really wear") or
+:      prompt:find("Really put on") or
+:      prompt:find("Really drink") then
+:    return true
+:  end
+:end
+
+:function choose_stat_gain()
+:  return "i"
+:end

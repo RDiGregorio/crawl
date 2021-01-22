@@ -55,7 +55,8 @@ default_manual_training = true
 # macro                                                                    #
 ############################################################################
 
-macros += M o ===start_running
+macros += M o ===explore
+macros += M p ===start_running
 
 :local running = false
 
@@ -95,13 +96,13 @@ macros += M o ===start_running
 :    if remove_curse() then
 :      return
 :    end
-:    if drop_junk() then
+:    if ready_to_identify_items() and identify_items() then
 :      return
 :    end
 :    if upgrade_equipment() then
 :      return
 :    end
-:    if ready_to_identify_items() and identify_items() then
+:    if drop_junk() then
 :      return
 :    end
 :  else
@@ -161,10 +162,17 @@ macros += M o ===start_running
 :end
 
 :function is_junk_amulet(item)
-:  return is_amulet(item) and
-:      item.subtype() and
-:      not item.artefact and
-:      not (item.subtype() == "amulet of regeneration")
+:  if is_amulet(item) then
+:    if item.subtype() == "amulet of inaccuracy" then
+:      return true
+:    end
+:    for other in inventory() do
+:      if compare_amulets(item, other) < 0 then
+:        return true
+:      end
+:    end
+:  end
+:  return false
 :end
 
 :function is_junk_ring(item)
@@ -257,7 +265,8 @@ macros += M o ===start_running
 :end
 
 :function want_weapon(item)
-:  if item.class(true) == "weapon" and uses_weapon_skill(item) then
+:  if item.class(true) == "weapon" and 
+:      not is_useless(item) then
 :    local best = best_damage(item.weap_skill)
 :    if item.damage > best then
 :      return true
@@ -270,7 +279,9 @@ macros += M o ===start_running
 :end
 
 :function want_armour(item)
-:  if item.class(true) == "armour" and not is_useless_armour(item) then
+:  if item.class(true) == "armour" and
+:      not is_useless(item) and
+:      not is_scales(item) then
 :    local best = best_ac(item.subtype())
 :    if item.ac > best then
 :      return true
@@ -284,33 +295,23 @@ macros += M o ===start_running
 :  return false
 :end
 
-:function want_magic(item)
-:  if item.subtype() == "amnesia" then
-:    return true
-:  end
-:  if item.class(true) == "book" and not item.is_useless then
-:    return true
-:  end
-:  return false
+:function want_book(item)
+:  return item.class(true) == "book" and not item.is_useless
 :end
 
 :function autopickup(item, name)
 :  if unneeded_duplicate(item) or
-:      is_useless_armour(item) or
-:      is_junk_ring(item) or
-:      is_junk_amulet(item) then
+:      is_useless(item) or
+:      is_junk_ring(item) then
 :    return false
 :  end
 :  if burdened() and can_drop_if_burdened(item) then
 :    return false
 :  end
 :  if item.artefact then
-:    if not uses_weapon_skill(item) then
-:      return false
-:    end
 :    return true
 :  end
-:  if want_magic(item) then
+:  if want_book(item) then
 :    return true
 :  end
 :  if want_weapon(item) then
@@ -365,8 +366,19 @@ macros += M o ===start_running
 :    return true
 :  end
 :  for item in inventory() do
-:    if (item.class(true) == "potion" or item.class(true) == "jewellery") and
-:        not item.fully_identified then
+:    if want_to_identify(item) then
+:      return true
+:    end
+:  end
+:  return false
+:end
+
+:function want_to_identify(item)
+:  if not item.fully_identified then
+:    if faith_equipped() and is_amulet(item) then
+:      return true
+:    end
+:    if item.class(true) == "potion" then
 :      return true
 :    end
 :  end
@@ -379,10 +391,7 @@ macros += M o ===start_running
 :    if item.class(true) == "scroll" and not item.fully_identified then
 :      return read_scroll(items.index_to_letter(item.slot))
 :    end
-:    if (item.class(true) == "potion" or item.class(true) == "jewellery") and
-:        not item.artefact and
-:        not item.subtype() and
-:        id_letter then
+:    if want_to_identify(item) and not item.artefact and id_letter then
 :      return read_scroll(id_letter .. items.index_to_letter(item.slot))
 :    end
 :  end
@@ -424,6 +433,17 @@ macros += M o ===start_running
 :  return false
 :end
 
+:function is_ring(item)
+:  if item.class(true) == "jewellery" then
+:    return item.name():find("ring")
+:  end
+:  return false
+:end
+
+:function is_scales(item)
+:  return item.name():find("scales")
+:end
+
 :function compare_amulets(left, right)
 :  -- todo: handle artefacts
 :  if left.artefact or right.artefact then
@@ -432,7 +452,7 @@ macros += M o ===start_running
 :  if not is_amulet(left) or not is_amulet(right) then
 :    return 0
 :  end
-:  if not left.subtype() or not right.subtype() then
+:  if not left.fully_identified or not right.fully_identified then
 :    return 0
 :  end
 :  return compare(amulet_level(left), amulet_level(right))
@@ -440,31 +460,35 @@ macros += M o ===start_running
 
 :function amulet_level(amulet)
 :  if amulet.subtype() == "amulet of regeneration" then
-:    return 4
+:    return 6
 :  end
 :  if amulet.subtype() == "amulet of guardian spirit" then
-:    return 3
+:    return 5
+:  end
+:  if amulet.subtype() == "amulet of faith" then
+:    return 4
 :  end
 :  if amulet.subtype() == "amulet of reflection" then
-:    return 2
+:    return 3
 :  end
 :  if amulet.subtype() == "amulet of the acrobat" then
+:    return 2
+:  end
+:  if amulet.subtype() == "amulet of magic regeneration" then
 :    return 1
 :  end
 :  return 0
-:end
-
-:function is_ring(item)
-:  if item.class(true) == "jewellery" then
-:    return not is_amulet(item)
-:  end
-:  return false
 :end
 
 :function is_ring_missing()
 :  local left = items.equipped_at("Left Ring")
 :  local right = items.equipped_at("Right Ring")
 :  return not left or not right
+:end
+
+:function faith_equipped()
+:  local amulet = items.equipped_at("Amulet")
+:  return amulet and amulet.subtype() == "amulet of faith"
 :end
 
 :function equip_ring(item, letter)
@@ -501,35 +525,46 @@ macros += M o ===start_running
 
 :function upgrade_equipment()
 :  for item in inventory() do
-:    if item.class(true) == "weapon" and not item.artefact then
+:    if item.class(true) == "weapon" and
+:        not item.artefact and 
+:        not is_useless(item) then
 :      local equipped = items.equipped_at("Weapon")
-:      if not item.fully_identified or
-:          not equipped or
+:      if not equipped or
+:          not item.fully_identified or
 :          compare_weapons(item, equipped) > 0 then
-:        if item.wield() then
+:        if not item.equipped and
+:            not (equipped and equipped.cursed) and
+:            item.wield() then
 :          return true
 :        end
 :      end
 :    end
 :    if item.class(true) == "armour" and
 :        not item.artefact and
-:        not is_useless_armour(item) then
+:        not is_useless(item) then
 :      local equipped = equipped_at(item.subtype())
-:      if not item.fully_identified or
-:          not equipped or
+:      if not equipped or
+:          not item.fully_identified or
 :          compare_armour(item, equipped) > 0 then
-:        if item.wear() then
+:        if not item.equipped and
+:            not (equipped and equipped.cursed) and
+:            item.wear() then
 :          return true
 :        end
 :      end
 :    end
 :    if is_amulet(item) and
 :        not item.artefact and
-:        item.subtype() and
-:        not is_junk_amulet(item) and
-:        not items.equipped_at("Amulet") then
-:      if item.puton() then
-:        return true
+:        not is_useless(item) then
+:      local equipped = items.equipped_at("Amulet")
+:      if not equipped or
+:          not item.fully_identified and not faith_equipped() or
+:          compare_amulets(item, equipped) > 0 then
+:        if not item.equipped and
+:            not (equipped and equipped.cursed) and
+:            item.puton() then
+:          return true
+:        end
 :      end
 :    end
 :  end
@@ -581,7 +616,7 @@ macros += M o ===start_running
 :  if not left.fully_identified or not right.fully_identified then
 :    return 0
 :  end
-:  if left.name():find("scales") or right.name():find("scales") then
+:  if is_scales(left) or is_scales(right) then
 :    return 0
 :  end
 :  return compare(left.ac + left.plus, right.ac + right.plus)
@@ -607,12 +642,12 @@ macros += M o ===start_running
 :  return result
 :end
 
-:function is_useless_armour(item)
-:  if item.name():find("barding") then
-:    return true
+:function is_useless(item)
+:  if item.class(true) == "armour" then
+:    return item.subtype() == "shield" or item.name():find("barding")
 :  end
-:  if item.subtype() == "shield" then
-:    return true
+:  if item.class(true) == "weapon" then
+:    return not uses_weapon_skill(item)
 :  end
 :  return false
 :end
@@ -671,4 +706,16 @@ macros += M o ===start_running
 
 :function choose_stat_gain()
 :  return "i"
+:end
+
+############################################################################
+# debug                                                                    #
+############################################################################
+
+macros += M c ===debug
+
+:function debug()
+:  for item in inventory() do
+:    print(item.subtype())
+:  end
 :end

@@ -32,7 +32,7 @@ force_more_message += winds around you calm down
 force_more_message += translocation energy dissipates
 force_more_message += mighty Pandemonium lord
 force_more_message += grow feeble
-force_more_message += being watched
+force_more_message += are being watched
 
 runrest_stop_message += transformation is almost over
 runrest_stop_message += back to life
@@ -42,17 +42,26 @@ explore_stop += greedy_pickup
 
 autopickup_exceptions += brilliance, holy word, silence
 autopickup_exceptions += polymorph, random effects
+autopickup_exceptions += <phantom mirror
 
 message_colour += mute:Cannot currently process new keys
-
-############################################################################
-# build setup                                                              #
-############################################################################
 
 species = ho
 background = be
 weapon = hand axe
 default_manual_training = true
+
+############################################################################
+# macro                                                                    #
+############################################################################
+
+macros += M o ===start_running
+
+:local running = false
+
+:function start_running()
+:  running = true
+:end
 
 :function ready()
 :  if you.turns() == 0 then
@@ -62,15 +71,16 @@ default_manual_training = true
 :    you.train_skill("Dodging", 0)
 :  end
 :  if in_last_message("explore") or in_last_message("exploring") then
-:    -- todo: done exploring
+:    running = false
+:  end
+:  if running then
+:    explore()
 :  end
 :end
 
 ############################################################################
 # exploration                                                              #
 ############################################################################
-
-macros += M o ===explore
 
 :function must_rest()
 :  return you.status("berserk cooldown") or you.slowed()
@@ -82,18 +92,20 @@ macros += M o ===explore
 :      crawl.sendkeys("5")
 :      return
 :    end
-:    if upgrade_equipment() then
-:      return
-:    end
-:    if ready_to_identify_items() and identify_items() then
-:      return
-:    end
 :    if remove_curse() then
 :      return
 :    end
 :    if drop_junk() then
 :      return
 :    end
+:    if upgrade_equipment() then
+:      return
+:    end
+:    if ready_to_identify_items() and identify_items() then
+:      return
+:    end
+:  else
+:    running = false
 :  end
 :  crawl.sendkeys("o")
 :end
@@ -155,10 +167,41 @@ macros += M o ===explore
 :      not (item.subtype() == "amulet of regeneration")
 :end
 
+:function is_junk_ring(item)
+:  local good_rings = {
+:    "ring of evasion",
+:    "ring of poison resistance",
+:    "ring of positive energy",
+:    "ring of protection",
+:    "ring of protection from cold",
+:    "ring of protection from fire",
+:    "ring of resist corrosion",
+:    "ring of see invisible",
+:    "ring of slaying",
+:    "ring of willpower"
+:  }
+:  if is_ring(item) and
+:      item.subtype() and
+:      not item.artefact then
+:    if item.plus and item.plus < 0 then
+:      return true
+:    end
+:    for index, subtype in ipairs(good_rings) do
+:      if item.subtype() == subtype then
+:        return false
+:      end
+:    end
+:    return true
+:  end
+:  return false
+:end
+
 :function is_junk(item)
 :  if is_junk_weapon(item) or
 :      is_junk_armour(item) or
-:      is_junk_amulet(item) then
+:      is_junk_amulet(item) or
+:      is_junk_ring(item) or
+:      unneeded_duplicate(item) then
 :    return true
 :  end
 :  if burdened() and can_drop_if_burdened(item) then
@@ -168,6 +211,7 @@ macros += M o ===explore
 :    "harm"
 :  }
 :  local junk_subtypes = {
+:    "attraction",
 :    "degeneration",
 :    "lignification",
 :    "brilliance",
@@ -195,6 +239,22 @@ macros += M o ===explore
 ############################################################################
 # autopickup                                                               #
 ############################################################################
+
+:function unneeded_duplicate(item)
+:  if item.artefact then
+:    return false
+:  end
+:  if item.class(true) == "jewellery" and item.subtype() or
+:      item.subtype() == "phantom mirror" then
+:    for other in inventory() do
+:      if item.subtype() == other.subtype() and
+:          not (item.slot == other.slot) then
+:        return true
+:      end
+:    end
+:  end
+:  return false
+:end
 
 :function want_weapon(item)
 :  if item.class(true) == "weapon" and uses_weapon_skill(item) then
@@ -235,11 +295,19 @@ macros += M o ===explore
 :end
 
 :function autopickup(item, name)
+:  if unneeded_duplicate(item) or
+:      is_useless_armour(item) or
+:      is_junk_ring(item) or
+:      is_junk_amulet(item) then
+:    return false
+:  end
 :  if burdened() and can_drop_if_burdened(item) then
 :    return false
 :  end
 :  if item.artefact then
-:    -- todo: improve this, set to true for debugging
+:    if not uses_weapon_skill(item) then
+:      return false
+:    end
 :    return true
 :  end
 :  if want_magic(item) then
@@ -272,7 +340,7 @@ macros += M o ===explore
 :  local rc_letter = scroll_of_remove_curse_letter()
 :  if rc_letter then
 :    for item in inventory() do
-:      if item.cursed then
+:      if item.cursed and item.equipped then
 :        return read_scroll(rc_letter)
 :      end
 :    end
@@ -297,7 +365,7 @@ macros += M o ===explore
 :    return true
 :  end
 :  for item in inventory() do
-:    if (item.class(true) == "potion" or is_amulet(item)) and
+:    if (item.class(true) == "potion" or item.class(true) == "jewellery") and
 :        not item.fully_identified then
 :      return true
 :    end
@@ -311,8 +379,9 @@ macros += M o ===explore
 :    if item.class(true) == "scroll" and not item.fully_identified then
 :      return read_scroll(items.index_to_letter(item.slot))
 :    end
-:    if (item.class(true) == "potion" or is_amulet(item)) and
-:        not item.fully_identified and
+:    if (item.class(true) == "potion" or item.class(true) == "jewellery") and
+:        not item.artefact and
+:        not item.subtype() and
 :        id_letter then
 :      return read_scroll(id_letter .. items.index_to_letter(item.slot))
 :    end
@@ -329,7 +398,7 @@ macros += M o ===explore
 :end
 
 :function burdened()
-:  return table.getn(items.inventory()) > 50
+:  return table.getn(items.inventory()) > 47
 :end
 
 :function read_scroll(letter)
@@ -345,12 +414,75 @@ macros += M o ===explore
 ############################################################################
 
 :function uses_weapon_skill(item)
-:  return item.weap_skill == "Axes"
+:  return item.class(true) == "weapon" and item.weap_skill == "Axes"
 :end
 
 :function is_amulet(item)
 :  if item.class(true) == "jewellery" then
 :    return item.name():find("amulet") or item.name():find("necklace")
+:  end
+:  return false
+:end
+
+:function compare_amulets(left, right)
+:  -- todo: handle artefacts
+:  if left.artefact or right.artefact then
+:    return 0
+:  end
+:  if not is_amulet(left) or not is_amulet(right) then
+:    return 0
+:  end
+:  if not left.subtype() or not right.subtype() then
+:    return 0
+:  end
+:  return compare(amulet_level(left), amulet_level(right))
+:end
+
+:function amulet_level(amulet)
+:  if amulet.subtype() == "amulet of regeneration" then
+:    return 4
+:  end
+:  if amulet.subtype() == "amulet of guardian spirit" then
+:    return 3
+:  end
+:  if amulet.subtype() == "amulet of reflection" then
+:    return 2
+:  end
+:  if amulet.subtype() == "amulet of the acrobat" then
+:    return 1
+:  end
+:  return 0
+:end
+
+:function is_ring(item)
+:  if item.class(true) == "jewellery" then
+:    return not is_amulet(item)
+:  end
+:  return false
+:end
+
+:function is_ring_missing()
+:  local left = items.equipped_at("Left Ring")
+:  local right = items.equipped_at("Right Ring")
+:  return not left or not right
+:end
+
+:function equip_ring(item, letter)
+:  if is_ring(item) then
+:    local left = items.equipped_at("Left Ring")
+:    local right = items.equipped_at("Right Ring")
+:    if is_ring_missing() then
+:      return item.puton()
+:    end
+:    if left.cursed and right.cursed then
+:      return false
+:    end
+:    if left.cursed or right.cursed then
+:      return item.puton()
+:    end
+:    letter = letter or items.index_to_letter(left.slot)
+:    crawl.sendkeys("P" .. items.index_to_letter(item.slot) .. letter)
+:    return true
 :  end
 :  return false
 :end
@@ -374,8 +506,9 @@ macros += M o ===explore
 :      if not item.fully_identified or
 :          not equipped or
 :          compare_weapons(item, equipped) > 0 then
-:        item.wield()
-:        return true
+:        if item.wield() then
+:          return true
+:        end
 :      end
 :    end
 :    if item.class(true) == "armour" and
@@ -385,17 +518,19 @@ macros += M o ===explore
 :      if not item.fully_identified or
 :          not equipped or
 :          compare_armour(item, equipped) > 0 then
-:        item.wear()
-:        return true
+:        if item.wear() then
+:          return true
+:        end
 :      end
 :    end
-:    if is_amulet(item) and 
+:    if is_amulet(item) and
 :        not item.artefact and
 :        item.subtype() and
 :        not is_junk_amulet(item) and
 :        not items.equipped_at("Amulet") then
-:      item.puton()
-:      return true
+:      if item.puton() then
+:        return true
+:      end
 :    end
 :  end
 :  return false
@@ -409,6 +544,9 @@ macros += M o ===explore
 :  -- todo: handle artefacts
 :  -- todo: handle egos
 :  if left.artefact or right.artefact then
+:    return 0
+:  end
+:  if left.is_useless or right.is_useless then
 :    return 0
 :  end
 :  if not left.class(true) == "weapon" or
@@ -430,6 +568,9 @@ macros += M o ===explore
 :  if left.artefact or right.artefact then
 :    return 0
 :  end
+:  if left.is_useless or right.is_useless then
+:    return 0
+:  end
 :  if not left.class(true) == "armour" or
 :      not right.class(true) == "armour" then
 :    return 0
@@ -438,6 +579,9 @@ macros += M o ===explore
 :    return 0
 :  end
 :  if not left.fully_identified or not right.fully_identified then
+:    return 0
+:  end
+:  if left.name():find("scales") or right.name():find("scales") then
 :    return 0
 :  end
 :  return compare(left.ac + left.plus, right.ac + right.plus)
@@ -520,8 +664,7 @@ macros += M o ===explore
 :      prompt:find("Really remove") or
 :      prompt:find("Really wield") or
 :      prompt:find("Really wear") or
-:      prompt:find("Really put on") or
-:      prompt:find("Really drink") then
+:      prompt:find("Really put on") then
 :    return true
 :  end
 :end

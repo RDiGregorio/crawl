@@ -41,7 +41,6 @@ explore_stop = stairs, shops, altars, portals, branches, runed_doors
 explore_stop += greedy_pickup
 
 autopickup_exceptions += brilliance, holy word, silence
-autopickup_exceptions += brilliance, holy word, silence
 autopickup_exceptions += polymorph, random effects
 
 message_colour += mute:Cannot currently process new keys
@@ -103,6 +102,18 @@ macros += M o ===explore
 # item dropping                                                            #
 ############################################################################
 
+:function drop(item)
+:  local letter = items.index_to_letter(item.slot)
+:  crawl.sendkeys("d" .. letter .. string.char(13))
+:end
+
+:function can_drop_if_burdened(item)
+:  if item.class(true) == "wand" then
+:    return not (item.subtype() == "digging")
+:  end
+:  return false
+:end
+
 :function drop_junk()
 :  for item in inventory() do
 :    if is_junk(item) then
@@ -113,11 +124,6 @@ macros += M o ===explore
 :    end
 :  end
 :  return false
-:end
-
-:function drop(item)
-:  local letter = items.index_to_letter(item.slot)
-:  crawl.sendkeys("d" .. letter .. string.char(13))
 :end
 
 :function is_junk_weapon(item)
@@ -132,7 +138,7 @@ macros += M o ===explore
 :end
 
 :function is_junk_armour(item)
-:  if item.class(true) == "armour"  and not item.branded then
+:  if item.class(true) == "armour" and not item.branded then
 :    for other in inventory() do
 :      if compare_armour(item, other) < 0 then
 :        return true
@@ -142,8 +148,20 @@ macros += M o ===explore
 :  return false
 :end
 
+:function is_junk_amulet(item)
+:  return is_amulet(item) and
+:      item.subtype() and
+:      not item.artefact and
+:      not (item.subtype() == "amulet of regeneration")
+:end
+
 :function is_junk(item)
-:  if is_junk_weapon(item) or is_junk_armour(item) then
+:  if is_junk_weapon(item) or
+:      is_junk_armour(item) or
+:      is_junk_amulet(item) then
+:    return true
+:  end
+:  if burdened() and can_drop_if_burdened(item) then
 :    return true
 :  end
 :  local junk_egos = {
@@ -217,6 +235,9 @@ macros += M o ===explore
 :end
 
 :function autopickup(item, name)
+:  if burdened() and can_drop_if_burdened(item) then
+:    return false
+:  end
 :  if item.artefact then
 :    -- todo: improve this, set to true for debugging
 :    return true
@@ -233,50 +254,6 @@ macros += M o ===explore
 :end
 
 :add_autopickup_func(autopickup)
-
-############################################################################
-# equipment                                                                #
-############################################################################
-
-:function uses_weapon_skill(item)
-:  return item.weap_skill == "Axes"
-:end
-
-:function equipped_at(subtype)
-:  local translations = {
-:    cloak = "Cloak",
-:    helmet = "Helmet",
-:    gloves = "Gloves",
-:    boots = "Boots",
-:    body = "Armour",
-:    shield = "Shield"
-:  }
-:  return items.equipped_at(translations[subtype])
-:end
-
-:function upgrade_equipment()
-:  for item in inventory() do
-:    if item.class(true) == "weapon" then
-:      local equipped = items.equipped_at("Weapon")
-:      if not item.fully_identified or
-:          not equipped or
-:          compare_weapons(item, equipped) > 0 then
-:        item.wield()
-:        return true
-:      end
-:    end
-:    if item.class(true) == "armour" and not is_useless_armour(item) then
-:      local equipped = equipped_at(item.subtype())
-:      if not item.fully_identified or
-:          not equipped or
-:          compare_armour(item, equipped) > 0 then
-:        item.wear()
-:        return true
-:      end
-:    end
-:  end
-:  return false
-:end
 
 ############################################################################
 # curse removal                                                            #
@@ -351,11 +328,8 @@ macros += M o ===explore
 :  return iter.invent_iterator:new(items.inventory())
 :end
 
-:function is_amulet(item)
-:  if item.class(true) == "jewellery" then
-:    return item.name():find("amulet")
-:  end
-:  return false
+:function burdened()
+:  return table.getn(items.inventory()) > 50
 :end
 
 :function read_scroll(letter)
@@ -364,6 +338,67 @@ macros += M o ===explore
 :  end
 :  crawl.sendkeys("r" .. letter)
 :  return true
+:end
+
+############################################################################
+# equipment utility                                                        #
+############################################################################
+
+:function uses_weapon_skill(item)
+:  return item.weap_skill == "Axes"
+:end
+
+:function is_amulet(item)
+:  if item.class(true) == "jewellery" then
+:    return item.name():find("amulet") or item.name():find("necklace")
+:  end
+:  return false
+:end
+
+:function equipped_at(subtype)
+:  local translations = {
+:    cloak = "Cloak",
+:    helmet = "Helmet",
+:    gloves = "Gloves",
+:    boots = "Boots",
+:    body = "Armour",
+:    shield = "Shield"
+:  }
+:  return items.equipped_at(translations[subtype])
+:end
+
+:function upgrade_equipment()
+:  for item in inventory() do
+:    if item.class(true) == "weapon" and not item.artefact then
+:      local equipped = items.equipped_at("Weapon")
+:      if not item.fully_identified or
+:          not equipped or
+:          compare_weapons(item, equipped) > 0 then
+:        item.wield()
+:        return true
+:      end
+:    end
+:    if item.class(true) == "armour" and
+:        not item.artefact and
+:        not is_useless_armour(item) then
+:      local equipped = equipped_at(item.subtype())
+:      if not item.fully_identified or
+:          not equipped or
+:          compare_armour(item, equipped) > 0 then
+:        item.wear()
+:        return true
+:      end
+:    end
+:    if is_amulet(item) and 
+:        not item.artefact and
+:        item.subtype() and
+:        not is_junk_amulet(item) and
+:        not items.equipped_at("Amulet") then
+:      item.puton()
+:      return true
+:    end
+:  end
+:  return false
 :end
 
 ############################################################################

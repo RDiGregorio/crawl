@@ -164,10 +164,9 @@ macros += M o ===start_running
 :end
 
 :function is_scary_monster(target)
-:  if target.is_unique(target) then
-:    return true
-:  end
-:  if has_spell(target, "Symbol of Torment") or has_spell("Flay") then
+:  if target.is_unique(target) or
+:      has_spell(target, "Symbol of Torment") or
+:      has_spell(target, "Flay") then
 :    return true
 :  end
 :  local names = {
@@ -177,7 +176,9 @@ macros += M o ===start_running
 :    "basilisk",
 :    "hydra",
 :    "dream sheep",
-:    "catoblepas"
+:    "catoblepas",
+:    -- torment
+:    "lurking horror"
 :  }
 :  for _, name in ipairs(names) do
 :    if target.name(target):find(name) then

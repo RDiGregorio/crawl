@@ -23,7 +23,6 @@ force_more_message += powers of darkness
 force_more_message += horrible wounds
 force_more_message += back to life
 force_more_message += smites you
-force_more_message += autopickup
 force_more_message += back at you
 force_more_message += transformation is almost over
 force_more_message += magic feels tainted
@@ -55,8 +54,8 @@ default_manual_training = true
 # main                                                                     #
 ############################################################################
 
-#macros += M p ===explore
 macros += M o ===start_running
+macros += M p ===step
 
 :local running = false
 
@@ -79,6 +78,20 @@ macros += M o ===start_running
 :end
 
 :function ready()
+:  if you.turns() == 0 then
+:    you.train_skill("Axes", 2)
+:    you.train_skill("Armour", 1)
+:    you.train_skill("Fighting", 1)
+:    you.train_skill("Dodging", 0)
+:  end
+:  run()
+:end
+
+:function run()
+:  if must_stop_running() then
+:    running = false
+:    print("~~~~~~~~~~~~~~~~~~~~ STOPPED RUNNING ~~~~~~~~~~~~~~~~~~~~")
+:  end
 :  local threat_level = threat()
 :  if threat_level > 0 then
 :    local channel = nil
@@ -92,16 +105,6 @@ macros += M o ===start_running
 :    end
 :    print(message, channel)
 :  end
-:  if you.turns() == 0 then
-:    you.train_skill("Axes", 2)
-:    you.train_skill("Armour", 1)
-:    you.train_skill("Fighting", 1)
-:    you.train_skill("Dodging", 0)
-:  end
-:  if must_stop_running() then
-:    running = false
-:    print("~~~~~~~~~~~~~~~~~~~~ STOPPED RUNNING ~~~~~~~~~~~~~~~~~~~~")
-:  end
 :  if running then
 :    if is_safe() then
 :      explore()
@@ -109,6 +112,12 @@ macros += M o ===start_running
 :      hit_closest()
 :    end
 :  end
+:end
+
+:function step()
+:  running = true
+:  run()
+:  running = false
 :end
 
 ############################################################################
@@ -170,9 +179,12 @@ macros += M o ===start_running
 :    return true
 :  end
 :  local names = {
-:    -- lair
+:   -- acid
 :    "oklob plant",
+:   -- electric
 :    "electric eel",
+:    "shock serpent",
+:    -- lair (todo: paralysis group?)
 :    "basilisk",
 :    "hydra",
 :    "dream sheep",
@@ -319,9 +331,21 @@ macros += M o ===start_running
 :  return false
 :end
 
+:function is_junk_ring(item)
+:  if is_ring(item) then
+:    if item.subtype() == "ring of evasion" then
+:      return true
+:    end
+:    if item.plus and item.plus < 0 then
+:      return true
+:    end
+:  end
+:  return false
+:end
+
 # rings are not supported yet
 
-:function is_junk_ring(item)
+:function is_junk_ring2(item)
 :  local good_rings = {
 :    "ring of evasion",
 :    "ring of poison resistance",
@@ -354,6 +378,7 @@ macros += M o ===start_running
 :  if is_junk_weapon(item) or
 :      is_junk_armour(item) or
 :      is_junk_amulet(item) or
+:      is_junk_ring(item) or
 :      unneeded_duplicate(item) then
 :    return true
 :  end
@@ -394,6 +419,22 @@ macros += M o ===start_running
 ############################################################################
 
 :function unneeded_duplicate(item)
+:  if item.artefact then
+:    return false
+:  end
+:  if item.subtype() == "phantom mirror" then
+:    for other in inventory() do
+:      if not (item.slot == other.slot) then
+:        return true
+:      end
+:    end
+:  end
+:  return false
+:end
+
+# duplicate detection is not supported yet
+
+:function unneeded_duplicate2(item)
 :  if item.artefact then
 :    return false
 :  end

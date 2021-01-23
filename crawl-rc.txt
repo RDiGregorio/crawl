@@ -1,6 +1,3 @@
-# equipping unknown amulets causes running to stop
-# need to special case some hard monsters: electric eel
-
 bindkey = [s] CMD_NO_CMD_DEFAULT
 bindkey = [p] CMD_NO_CMD_DEFAULT
 
@@ -103,7 +100,7 @@ macros += M o ===start_running
 :  end
 :  if must_stop_running() then
 :    running = false
-:    print("Stopped running.")
+:    print("~~~~~~~~~~~~~~~~~~~~ STOPPED RUNNING ~~~~~~~~~~~~~~~~~~~~")
 :  end
 :  if running then
 :    if is_safe() then
@@ -170,6 +167,9 @@ macros += M o ===start_running
 :  if target.is_unique(target) then
 :    return true
 :  end
+:  if has_spell(target, "Symbol of Torment") or has_spell("Flay") then
+:    return true
+:  end
 :  local names = {
 :    -- lair
 :    "oklob plant",
@@ -177,19 +177,9 @@ macros += M o ===start_running
 :    "basilisk",
 :    "hydra",
 :    "dream sheep",
-:    "catoblepas",
-:    -- torment (todo: instead, check monster spell lists)
-:    "brimstone fiend",
-:    "curse skull",
-:    "curse toe",
-:    "ice fiend",
-:    "mummy priest",
-:    "royal mummy",
-:    "tormentor",
-:    "tzitzimitl",
-:    "lurking horror"
+:    "catoblepas"
 :  }
-:  for index, name in ipairs(names) do
+:  for _, name in ipairs(names) do
 :    if target.name(target):find(name) then
 :      return true
 :    end
@@ -206,6 +196,17 @@ macros += M o ===start_running
 :      end
 :    end
 :  end
+:end
+
+:function has_spell(monster, name)
+:  for _, book in ipairs(monster.spells(monster)) do
+:    for _, spell in ipairs(book) do
+:      if spell:find(name) then
+:        return true
+:      end
+:    end
+:  end
+:  return false
 :end
 
 :function threat()
@@ -338,7 +339,7 @@ macros += M o ===start_running
 :    if item.plus and item.plus < 0 then
 :      return true
 :    end
-:    for index, subtype in ipairs(good_rings) do
+:    for _, subtype in ipairs(good_rings) do
 :      if item.subtype() == subtype then
 :        return false
 :      end
@@ -352,7 +353,6 @@ macros += M o ===start_running
 :  if is_junk_weapon(item) or
 :      is_junk_armour(item) or
 :      is_junk_amulet(item) or
-:      is_junk_ring(item) or
 :      unneeded_duplicate(item) then
 :    return true
 :  end
@@ -375,12 +375,12 @@ macros += M o ===start_running
 :    "torment",
 :    "vulnerability"
 :  }
-:  for index, ego in ipairs(junk_egos) do
+:  for _, ego in ipairs(junk_egos) do
 :    if item.ego(true) == ego then 
 :      return true
 :    end
 :  end
-:  for index, subtype in ipairs(junk_subtypes) do
+:  for _, subtype in ipairs(junk_subtypes) do
 :    if item.subtype() == subtype then 
 :      return true
 :    end

@@ -17,6 +17,7 @@ explore_auto_rest = true
 rest_wait_both = true
 show_more = false
 automagic_enable = true
+autofight_stop = 0
 
 force_more_message += flicker back into view
 force_more_message += you miscast
@@ -66,6 +67,7 @@ default_manual_training = true
 
 macros += M o ===start_running
 macros += M p ===step
+macros += M \{9} ===tab
 
 :local running = false
 
@@ -110,6 +112,7 @@ macros += M p ===step
 :    local channel = nil
 :    local message = "Danger: "
 :    message = message .. math.floor(100 * threat_level / 16) .. "%"
+:    message = message .. " (" .. math.floor(hp_percent()) .. "% health)"
 :    if threat_level >= 2 ^ 4 then
 :      channel = 6
 :    end
@@ -129,7 +132,7 @@ macros += M p ===step
 :        crawl.sendkeys("aa")
 :        return
 :      end
-:      crawl.sendkeys(string.char(9))
+:      tab()
 :    end
 :  end
 :end
@@ -145,7 +148,12 @@ macros += M p ===step
 ############################################################################
 
 :function must_rest()
-:  return is_after_berserk() or you.slowed() or you.confused() 
+:  return is_after_berserk() or
+:      hp_percent() < 100 or
+:      mp_percent() < 100 or
+:      you.slowed() or
+:      you.confused() or
+:      you.status("barbed spikes")
 :end
 
 :function is_after_berserk()
@@ -167,6 +175,9 @@ macros += M p ===step
 :    if upgrade_equipment() then
 :      return
 :    end
+:    if remove_dangerous() then
+:      return
+:    end
 :    if drop_junk() then
 :      return
 :    end
@@ -180,6 +191,14 @@ macros += M p ===step
 # combat                                                                   #
 ############################################################################
 
+:function tab()
+:  if hp_percent() <= 50 then
+:    print("You are too injured to fight recklessly!")
+:    return
+:  end
+:  crawl.sendkeys(string.char(9))
+:end
+
 :function must_berserk()
 :  if is_safe() or berserk_disabled() then
 :    return false
@@ -187,7 +206,7 @@ macros += M p ===step
 :  if threat(1) == 0 then
 :    return false
 :  end
-:  if threat() >= 2 ^ 3 or hp_percent() < 75 or you.poisoned() then
+:  if threat() >= 2 ^ 3 or hp_percent() <= 75 or you.poisoned() then
 :    return true
 :  end
 :  return false
@@ -199,8 +218,7 @@ macros += M p ===step
 
 :function is_scared()
 :  if you.poison_survival() < 1 or
-:      you.caught() or
-:      you.status("barbed spikes") then
+:      you.caught() then
 :    return true
 :  end
 :  if not is_safe() then
@@ -210,10 +228,13 @@ macros += M p ===step
 :    if scary_weapon_present() then
 :      return true
 :    end
-:    if is_after_berserk() then
-:      return threat() >= 2 ^ 2 or hp_percent() < 75
+:    if you.status("barbed spikes") then
+:      return false
 :    end
-:    return threat() >= 2 ^ 4 or hp_percent() < 50
+:    if is_after_berserk() then
+:      return threat() >= 2 ^ 2 or hp_percent() <= 75
+:    end
+:    return threat() >= 2 ^ 4 or hp_percent() <= 50
 :  end
 :  return false
 :end
@@ -439,14 +460,20 @@ macros += M p ===step
 :function is_junk_ring(item)
 :  if is_ring(item) then
 :    if item.subtype() == "ring of teleportation" or
-:        --item.subtype() == "ring of fire" or
-:        --item.subtype() == "ring of ice" or
 :        item.subtype() == "ring of attention" then
 :      return true
 :    end
 :    if item.plus and item.plus < 0 then
 :      return true
 :    end
+:  end
+:  return false
+:end
+
+:function is_dangerous(item)
+:  if is_ring(item) then
+:    return item.subtype() == "ring of fire" or
+:        item.subtype() == "ring of ice"
 :  end
 :  return false
 :end
@@ -493,6 +520,7 @@ macros += M p ===step
 :  if burdened() and can_drop_if_burdened(item) then
 :    return true
 :  end
+:  -- todo: add an is_junk_cloak
 :  local junk_egos = {
 :    "harm"
 :  }
@@ -500,9 +528,9 @@ macros += M p ===step
 :    "attraction",
 :    "degeneration",
 :    "lignification",
-:    "brilliance",
-:    "holy word",
-:    "silence",
+:    --"brilliance",
+:    --"holy word",
+:    --"silence",
 :    "immolation",
 :    "noise",
 :    "random uselessness",
@@ -817,59 +845,77 @@ macros += M p ===step
 :  return items.equipped_at(translations[subtype])
 :end
 
+:function is_useless(item)
+:  if item.class(true) == "armour" then
+:    return item.subtype() == "shield" or item.name():find("barding")
+:  end
+:  if item.class(true) == "weapon" then
+:    return not uses_weapon_skill(item)
+:  end
+:  return false
+:end
+
 :function upgrade_equipment()
 :  for item in inventory() do
-:    if item.class(true) == "weapon" and
-:        not item.artefact and 
-:        not is_useless(item) then
-:      local equipped = items.equipped_at("Weapon")
-:      if not equipped or
-:          not item.fully_identified or
-:          compare_weapons(item, equipped) > 0 then
-:        if not item.equipped and
-:            not (equipped and equipped.cursed) and
-:            item.wield() then
-:          return true
+:    if not item.artefact and
+:        not is_dangerous(item) and
+:        not is_useless(item) and
+:        not is_junk(item) then
+:      if item.class(true) == "weapon" then
+:        local equipped = items.equipped_at("Weapon")
+:        if not equipped or
+:            not item.fully_identified or
+:            compare_weapons(item, equipped) > 0 then
+:          if not item.equipped and
+:              not (equipped and equipped.cursed) and
+:              item.wield() then
+:            return true
+:          end
+:        end
+:      end
+:      if item.class(true) == "armour" then
+:        local equipped = equipped_at(item.subtype())
+:        if not equipped or
+:            not item.fully_identified or
+:            compare_armour(item, equipped) > 0 then
+:          if not item.equipped and
+:              not (equipped and equipped.cursed) and
+:              item.wear() then
+:            return true
+:          end
+:        end
+:      end
+:      if is_amulet(item) then
+:        local equipped = items.equipped_at("Amulet")
+:        if not equipped or
+:            not item.fully_identified and not faith_equipped() or
+:            compare_amulets(item, equipped) > 0 then
+:          if not item.equipped and
+:              not (equipped and equipped.cursed) and
+:              item.puton() then
+:            return true
+:          end
+:        end
+:      end
+:      -- rings are not fully supported yet
+:      if is_ring(item) then
+:        if is_ring_missing() or
+:            not item.fully_identified then
+:          if not item.equipped and
+:              equip_ring(item) then
+:            return true
+:          end
 :        end
 :      end
 :    end
-:    if item.class(true) == "armour" and
-:        not item.artefact and
-:        not is_useless(item) then
-:      local equipped = equipped_at(item.subtype())
-:      if not equipped or
-:          not item.fully_identified or
-:          compare_armour(item, equipped) > 0 then
-:        if not item.equipped and
-:            not (equipped and equipped.cursed) and
-:            item.wear() then
-:          return true
-:        end
-:      end
-:    end
-:    if is_amulet(item) and
-:        not item.artefact and
-:        not is_useless(item) then
-:      local equipped = items.equipped_at("Amulet")
-:      if not equipped or
-:          not item.fully_identified and not faith_equipped() or
-:          compare_amulets(item, equipped) > 0 then
-:        if not item.equipped and
-:            not (equipped and equipped.cursed) and
-:            item.puton() then
-:          return true
-:        end
-:      end
-:    end
-:    -- rings are not fully supported yet
-:    -- disabled for now
-:    if false and is_ring(item) and
-:        not item.artefact and
-:        not is_useless(item) then
-:      if not item.equipped and
-:          is_ring_missing() and
-:          not is_junk_ring() and
-:          item.puton() then
+:  end
+:  return false
+:end
+
+:function remove_dangerous()
+:  for item in inventory() do
+:    if item.equipped and not item.cursed and is_dangerous(item) then
+:      if item.remove() then
 :        return true
 :      end
 :    end
@@ -946,16 +992,6 @@ macros += M p ===step
 :    end
 :  end
 :  return result
-:end
-
-:function is_useless(item)
-:  if item.class(true) == "armour" then
-:    return item.subtype() == "shield" or item.name():find("barding")
-:  end
-:  if item.class(true) == "weapon" then
-:    return not uses_weapon_skill(item)
-:  end
-:  return false
 :end
 
 ############################################################################

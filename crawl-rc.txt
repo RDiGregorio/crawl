@@ -1,6 +1,7 @@
 # handle junk cloaks
 # still requires key press on some unid amulets
 # use invisible_monster (x, y) to auto-fight invisible?
+# code not to berserk on blinkers, then easy uniques?
 
 bindkey = [s] CMD_NO_CMD_DEFAULT
 bindkey = [p] CMD_NO_CMD_DEFAULT
@@ -97,13 +98,14 @@ macros += M p ===step
 :function run()
 :  if must_stop_running() then
 :    running = false
-:    print("~~~~~~~~~~~~~~~~~~~~ STOPPED RUNNING ~~~~~~~~~~~~~~~~~~~~")
+:    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 :  end
 :  local threat_level = threat()
 :  if threat_level > 0 then
 :    local channel = nil
-:    local message = "Danger: " .. threat_level
-:    if monster or threat_level >= 2 ^ 4 then
+:    local message = "Danger: "
+:    message = message .. math.floor(100 * threat_level / 16) .. "%"
+:    if threat_level >= 2 ^ 4 then
 :      channel = 6
 :    end
 :    print(message, channel)
@@ -222,6 +224,7 @@ macros += M p ===step
 :    "electric eel",
 :    "shock serpent",
 :    -- lair (todo: paralysis group?)
+:    -- basilisk has a petrify spell
 :    "basilisk",
 :    "hydra",
 :    "dream sheep",
@@ -340,7 +343,7 @@ macros += M p ===step
 :      end
 :    end
 :  end
-:  return true
+:  return you.feel_safe()
 :end
 
 :function hp_percent()

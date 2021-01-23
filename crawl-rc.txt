@@ -1,3 +1,7 @@
+# handle junk cloaks
+# still requires key press on some unid amulets
+# use invisible_monster (x, y) to auto-fight invisible?
+
 bindkey = [s] CMD_NO_CMD_DEFAULT
 bindkey = [p] CMD_NO_CMD_DEFAULT
 
@@ -21,17 +25,17 @@ force_more_message += too confused to cast spells
 force_more_message += wracked with pain
 force_more_message += powers of darkness
 force_more_message += horrible wounds
-force_more_message += back to life
 force_more_message += smites you
 force_more_message += back at you
 force_more_message += transformation is almost over
+force_more_message += back to life
 force_more_message += magic feels tainted
-force_more_message += feel yourself slow down
 force_more_message += winds around you calm down
 force_more_message += translocation energy dissipates
 force_more_message += mighty Pandemonium lord
 force_more_message += grow feeble
 force_more_message += are being watched
+#force_more_message += feel yourself slow down
 
 runrest_stop_message += transformation is almost over
 runrest_stop_message += back to life
@@ -39,11 +43,13 @@ runrest_stop_message += back to life
 explore_stop = stairs, shops, altars, portals, branches, runed_doors
 explore_stop += greedy_pickup
 
-autopickup_exceptions += brilliance, holy word, silence
-autopickup_exceptions += polymorph, random effects
+#autopickup_exceptions += brilliance, holy word, silence
+#autopickup_exceptions += polymorph, random effects
 autopickup_exceptions += <phantom mirror
 
-message_colour += mute:Cannot currently process new keys
+channel.intrinsic_gain = mute
+#message_colour += mute:not currently process new keys
+message_colour += mute:feel yourself slow down
 
 species = ho
 background = be
@@ -69,6 +75,7 @@ macros += M p ===step
 :  end
 :  if in_last_message("explore") or
 :      in_last_message("exploring") or
+:      in_last_message("shaft crumbles and collapses") or
 :      in_last_message("strange disturbance") or
 :      in_last_message("too injured to fight") or
 :      in_last_message("reachable target") then
@@ -88,6 +95,7 @@ macros += M p ===step
 :end
 
 :function run()
+:print(scary_weapon_present())
 :  if must_stop_running() then
 :    running = false
 :    print("~~~~~~~~~~~~~~~~~~~~ STOPPED RUNNING ~~~~~~~~~~~~~~~~~~~~")
@@ -95,20 +103,26 @@ macros += M p ===step
 :  local threat_level = threat()
 :  if threat_level > 0 then
 :    local channel = nil
-:    local monster = find_scary_monster()
 :    local message = "Danger: " .. threat_level
 :    if monster or threat_level >= 2 ^ 4 then
 :      channel = 6
 :    end
-:    if monster then
-:      message = message .. " (" .. monster.name(monster) .. ")"
-:    end
 :    print(message, channel)
+:    if scary_monster_present() then
+:      print_scary_monsters()
+:    end
+:    if scary_weapon_present() then
+:      print_scary_weapons()
+:    end
 :  end
 :  if running then
 :    if is_safe() then
 :      explore()
 :    else
+:      if must_berserk() then
+:        crawl.sendkeys("aa")
+:        return
+:      end
 :      hit_closest()
 :    end
 :  end
@@ -125,7 +139,11 @@ macros += M p ===step
 ############################################################################
 
 :function must_rest()
-:  return you.status("berserk cooldown") or you.slowed()
+:  return is_after_berserk() or you.slowed() or you.confused() 
+:end
+
+:function is_after_berserk()
+:  return you.status("berserk cooldown")
 :end
 
 :function explore()
@@ -156,18 +174,38 @@ macros += M p ===step
 # combat                                                                   #
 ############################################################################
 
+:function must_berserk()
+:  if is_safe() or berserk_disabled() then
+:    return false
+:  end
+:  if threat(1) == 0 then
+:    return false
+:  end
+:  if threat() >= 2 ^ 3 or hp_percent() < 75 or you.poisoned() then
+:    return true
+:  end
+:  return false
+:end
+
+:function berserk_disabled()
+:  return you.berserk() or you.status("berserk cooldown")
+:end
+
 :function is_scared()
-:  if you.poison_survival() < 1 or you.caught() or you.confused() then
+:  if you.poison_survival() < 1 or you.caught() then
 :    return true
 :  end
 :  if not is_safe() then
 :    if find_scary_monster() then
 :      return true
 :    end
-:    return threat() >= 2 ^ 3 or
-:        hp_percent() < 75 or
-:        must_rest() or
-:        you.poisoned()
+:    if scary_weapon_present() then
+:      return true
+:    end
+:    if is_after_berserk() then
+:      return threat() >= 2 ^ 2 or hp_percent() < 75
+:    end
+:    return threat() >= 2 ^ 4 or hp_percent() < 50
 :  end
 :  return false
 :end
@@ -200,14 +238,26 @@ macros += M p ===step
 :  return false
 :end
 
-:function find_scary_monster()
+:function scary_monster_present()
+:  return table.getn(scary_monsters()) > 0
+:end
+
+:function scary_monsters()
+:  local result = {}
 :  for a = -8, 8 do
 :    for b = -8, 8 do
 :      c = monster.get_monster_at(a, b)
 :      if c and not c.is_safe(c) and is_scary_monster(c) then
-:        return c
+:        result[table.getn(result) + 1] = c
 :      end
 :    end
+:  end
+:  return result
+:end
+
+:function print_scary_monsters()
+:  for _, monster in ipairs(scary_monsters()) do
+:    print(monster.name(monster) .. " is dangerous!", 6)
 :  end
 :end
 
@@ -222,10 +272,53 @@ macros += M p ===step
 :  return false
 :end
 
-:function threat()
-:  local result = 0
+:function has_electrocution_weapon(monster)
+:  if monster.desc(c, true):find("of electrocution") then
+:    return true
+:  end
+:  return false
+:end
+
+:function has_distortion_weapon(monster)
+:  if monster.desc(c, true):find("of distortion") then
+:    return true
+:  end
+:  return false
+:end
+
+:function scary_weapons()
+:  local result = {}
 :  for a = -8, 8 do
 :    for b = -8, 8 do
+:      c = monster.get_monster_at(a, b)
+:      if c then
+:        if has_electrocution_weapon(c) then
+:          result[table.getn(result) + 1] = c.name(c) .. " has electrocution!"
+:        end
+:        if has_distortion_weapon(c) then
+:          result[table.getn(result) + 1] = c.name(c) .. " has distortion!"
+:        end      
+:      end
+:    end
+:  end
+:  return result
+:end
+
+:function scary_weapon_present()
+:  return table.getn(scary_weapons()) > 0
+:end
+
+:function print_scary_weapons()
+:  for _, message in ipairs(scary_weapons()) do
+:    print(message, 6)
+:  end
+:end
+
+:function threat(radius)
+:  radius = radius or 8
+:  local result = 0
+:  for a = -radius, radius do
+:    for b = -radius, radius do
 :      c = monster.get_monster_at(a, b)
 :      if c and not c.is_safe(c) then
 :        result = result + calculate_threat(c)
@@ -253,6 +346,7 @@ macros += M p ===step
 
 :function hp_percent()
 :  a, b = you.hp()
+:  a = you.poison_survival() or a
 :  return 100 * a / b
 :end
 
@@ -333,7 +427,10 @@ macros += M p ===step
 
 :function is_junk_ring(item)
 :  if is_ring(item) then
-:    if item.subtype() == "ring of evasion" then
+:    if item.subtype() == "ring of teleportation" or
+:        --item.subtype() == "ring of fire" or
+:        --item.subtype() == "ring of ice" or
+:        item.subtype() == "ring of attention" then
 :      return true
 :    end
 :    if item.plus and item.plus < 0 then
@@ -666,12 +763,6 @@ macros += M p ===step
 :  return 0
 :end
 
-:function is_ring_missing()
-:  local left = items.equipped_at("Left Ring")
-:  local right = items.equipped_at("Right Ring")
-:  return not left or not right
-:end
-
 :function faith_equipped()
 :  local amulet = items.equipped_at("Amulet")
 :  return amulet and amulet.subtype() == "amulet of faith"
@@ -679,11 +770,11 @@ macros += M p ===step
 
 :function equip_ring(item, letter)
 :  if is_ring(item) then
-:    local left = items.equipped_at("Left Ring")
-:    local right = items.equipped_at("Right Ring")
 :    if is_ring_missing() then
 :      return item.puton()
 :    end
+:    local left = items.equipped_at("Left Ring")
+:    local right = items.equipped_at("Right Ring")
 :    if left.cursed and right.cursed then
 :      return false
 :    end
@@ -695,6 +786,12 @@ macros += M p ===step
 :    return true
 :  end
 :  return false
+:end
+
+:function is_ring_missing()
+:  local left = items.equipped_at("Left Ring")
+:  local right = items.equipped_at("Right Ring")
+:  return not left or not right
 :end
 
 :function equipped_at(subtype)
@@ -751,6 +848,18 @@ macros += M p ===step
 :            item.puton() then
 :          return true
 :        end
+:      end
+:    end
+:    -- rings are not fully supported yet
+:    -- disabled for now
+:    if false and is_ring(item) and
+:        not item.artefact and
+:        not is_useless(item) then
+:      if not item.equipped and
+:          is_ring_missing() and
+:          not is_junk_ring() and
+:          item.puton() then
+:        return true
 :      end
 :    end
 :  end
@@ -889,7 +998,5 @@ macros += M p ===step
 macros += M c ===debug
 
 :function debug()
-:  for item in inventory() do
-:    print(item.subtype())
-:  end
+:  print("DEBUG MESSAGE")
 :end

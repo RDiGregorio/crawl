@@ -6,8 +6,27 @@
 # bug: scary weapon function is flaky
 # bug: autofight failures don't cause running to stop, use hooks?
 
+############################################################################
+# options                                                                  #
+############################################################################
+
+# prevents accidental resting or abilities
+
 bindkey = [s] CMD_NO_CMD_DEFAULT
 bindkey = [p] CMD_NO_CMD_DEFAULT
+
+# prevents accidental movement
+
+bindkey = [y] CMD_NO_CMD_DEFAULT
+bindkey = [n] CMD_NO_CMD_DEFAULT
+bindkey = [b] CMD_NO_CMD_DEFAULT
+bindkey = [c] CMD_NO_CMD_DEFAULT
+bindkey = [Y] CMD_NO_CMD_DEFAULT
+bindkey = [N] CMD_NO_CMD_DEFAULT
+bindkey = [B] CMD_NO_CMD_DEFAULT
+bindkey = [C] CMD_NO_CMD_DEFAULT
+
+# speeds up gameplay
 
 travel_delay = -1
 travel_key_stop = false
@@ -16,6 +35,10 @@ rest_delay = -1
 explore_auto_rest = true
 rest_wait_both = true
 show_more = false
+easy_confirm = all
+
+# other options
+
 automagic_enable = true
 autofight_stop = 0
 
@@ -52,10 +75,6 @@ explore_stop += greedy_pickup
 #autopickup_exceptions += polymorph, random effects
 autopickup_exceptions += <phantom mirror
 
-channel.intrinsic_gain = mute
-#message_colour += mute:not currently process new keys
-message_colour += mute:feel yourself slow down
-
 species = ho
 background = be
 weapon = hand axe
@@ -68,6 +87,7 @@ default_manual_training = true
 macros += M o ===start_running
 macros += M p ===step
 macros += M \{9} ===tab
+macros += M 5 ===five
 
 :local running = false
 
@@ -81,7 +101,8 @@ macros += M \{9} ===tab
 :  end
 :  if in_last_message("explore") or
 :      in_last_message("exploring") or
-:      in_last_message("shaft crumbles and collapses") or
+:      -- this does not work
+:      -- in_last_message("shaft crumbles and collapses") or
 :      in_last_message("strange disturbance") or
 :      in_last_message("thing hits you") or
 :      in_last_message("too injured") or
@@ -125,6 +146,7 @@ macros += M \{9} ===tab
 :    end
 :  end
 :  if running then
+:    crawl.more_autoclear(true)
 :    if is_safe() then
 :      explore()
 :    else
@@ -134,13 +156,17 @@ macros += M \{9} ===tab
 :      end
 :      tab()
 :    end
+:  else
+:    crawl.more_autoclear(false)
 :  end
 :end
 
 :function step()
-:  running = true
-:  run()
-:  running = false
+:  if not running then
+:    running = true
+:    run()
+:    running = false
+:  end
 :end
 
 ############################################################################
@@ -197,6 +223,13 @@ macros += M \{9} ===tab
 :    return
 :  end
 :  crawl.sendkeys(string.char(9))
+:end
+
+:function five()
+:  if must_rest() or
+:      crawl.yesno("Are you sure you want to wait?", true, "n") then
+:    crawl.sendkeys("5")
+:  end
 :end
 
 :function must_berserk()

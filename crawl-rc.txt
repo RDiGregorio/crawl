@@ -2,6 +2,9 @@
 # still requires key press on some unid amulets
 # use invisible_monster (x, y) to auto-fight invisible?
 # code not to berserk on blinkers, then easy uniques?
+# floating eye, check for paralysis spells
+# bug: scary weapon function is flaky
+# bug: autofight failures don't cause running to stop, use hooks?
 
 bindkey = [s] CMD_NO_CMD_DEFAULT
 bindkey = [p] CMD_NO_CMD_DEFAULT
@@ -78,8 +81,11 @@ macros += M p ===step
 :      in_last_message("exploring") or
 :      in_last_message("shaft crumbles and collapses") or
 :      in_last_message("strange disturbance") or
-:      in_last_message("too injured to fight") or
-:      in_last_message("reachable target") then
+:      in_last_message("thing hits you") or
+:      in_last_message("too injured") or
+:      in_last_message("too confused") or
+:      in_last_message("reachable target") or
+:      in_last_message("target in view") then
 :    return true
 :  end
 :  return is_scared()
@@ -124,7 +130,7 @@ macros += M p ===step
 :        crawl.sendkeys("aa")
 :        return
 :      end
-:      hit_closest()
+:      crawl.sendkeys(string.char(9))
 :    end
 :  end
 :end
@@ -275,14 +281,14 @@ macros += M p ===step
 :end
 
 :function has_electrocution_weapon(monster)
-:  if monster.desc(c, true):find("of electrocution") then
+:  if monster.desc(c, true):find("of electrocution%.") then
 :    return true
 :  end
 :  return false
 :end
 
 :function has_distortion_weapon(monster)
-:  if monster.desc(c, true):find("of distortion") then
+:  if monster.desc(c, true):find("of distortion%.") then
 :    return true
 :  end
 :  return false
@@ -953,8 +959,9 @@ macros += M p ===step
 # general utility                                                          #
 ############################################################################
 
-:function in_last_message(message)
-:  return crawl.messages(1):find(message)
+:function in_last_message(message, count)
+:  count = count or 1
+:  return crawl.messages(count):find(message)
 :end
 
 :function print(value, channel)

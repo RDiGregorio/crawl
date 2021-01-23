@@ -84,8 +84,7 @@ macros += M p ===step
 :      in_last_message("thing hits you") or
 :      in_last_message("too injured") or
 :      in_last_message("too confused") or
-:      in_last_message("reachable target") or
-:      in_last_message("target in view") then
+:      in_last_message("reachable target") then
 :    return true
 :  end
 :  return is_scared()
@@ -199,7 +198,9 @@ macros += M p ===step
 :end
 
 :function is_scared()
-:  if you.poison_survival() < 1 or you.caught() then
+:  if you.poison_survival() < 1 or
+:      you.caught() or
+:      you.status("barbed spikes") then
 :    return true
 :  end
 :  if not is_safe() then
@@ -236,7 +237,9 @@ macros += M p ===step
 :    "dream sheep",
 :    "catoblepas",
 :    -- torment
-:    "lurking horror"
+:    "lurking horror",
+:    -- misc
+:    "manticore"
 :  }
 :  for _, name in ipairs(names) do
 :    if target.name(target):find(name) then

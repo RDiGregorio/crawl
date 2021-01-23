@@ -345,11 +345,12 @@ macros += M p ===step
 :    for b = -8,8 do
 :      c = monster.get_monster_at(a, b)
 :      if c and not c.is_safe(c) then
+:print(c.name(c))
 :        return false
 :      end
 :    end
 :  end
-:  return false
+:  return true -- you.feel_safe()
 :end
 
 :function hp_percent()

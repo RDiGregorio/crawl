@@ -95,7 +95,6 @@ macros += M p ===step
 :end
 
 :function run()
-:print(scary_weapon_present())
 :  if must_stop_running() then
 :    running = false
 :    print("~~~~~~~~~~~~~~~~~~~~ STOPPED RUNNING ~~~~~~~~~~~~~~~~~~~~")
@@ -196,7 +195,7 @@ macros += M p ===step
 :    return true
 :  end
 :  if not is_safe() then
-:    if find_scary_monster() then
+:    if scary_monster_present() then
 :      return true
 :    end
 :    if scary_weapon_present() then

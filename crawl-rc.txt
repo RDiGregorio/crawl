@@ -1,3 +1,6 @@
+# equipping unknown amulets causes running to stop
+# need to special case some hard monsters: electric eel
+
 bindkey = [s] CMD_NO_CMD_DEFAULT
 bindkey = [p] CMD_NO_CMD_DEFAULT
 
@@ -15,7 +18,7 @@ force_more_message += you miscast
 force_more_message += know that spell
 force_more_message += resists
 force_more_message += struggles to resist
-force_more_message += calcifying dust
+force_more_message += calcifying dust hits you
 force_more_message += unable to access your magic
 force_more_message += too confused to cast spells
 force_more_message += wracked with pain
@@ -52,11 +55,11 @@ weapon = hand axe
 default_manual_training = true
 
 ############################################################################
-# macro                                                                    #
+# main                                                                     #
 ############################################################################
 
-macros += M o ===explore
-macros += M p ===start_running
+#macros += M p ===explore
+macros += M o ===start_running
 
 :local running = false
 
@@ -64,18 +67,50 @@ macros += M p ===start_running
 :  running = true
 :end
 
+:function must_stop_running()
+:  if not running then
+:    return false
+:  end
+:  if in_last_message("explore") or
+:      in_last_message("exploring") or
+:      in_last_message("strange disturbance") or
+:      in_last_message("too injured to fight") or
+:      in_last_message("reachable target") then
+:    return true
+:  end
+:  return is_scared()
+:end
+
 :function ready()
+:  local threat_level = threat()
+:  if threat_level > 0 then
+:    local channel = nil
+:    local monster = find_scary_monster()
+:    local message = "Danger: " .. threat_level
+:    if monster or threat_level >= 2 ^ 4 then
+:      channel = 6
+:    end
+:    if monster then
+:      message = message .. " (" .. monster.name(monster) .. ")"
+:    end
+:    print(message, channel)
+:  end
 :  if you.turns() == 0 then
 :    you.train_skill("Axes", 2)
 :    you.train_skill("Armour", 1)
 :    you.train_skill("Fighting", 1)
 :    you.train_skill("Dodging", 0)
 :  end
-:  if in_last_message("explore") or in_last_message("exploring") then
+:  if must_stop_running() then
 :    running = false
+:    print("Stopped running.")
 :  end
 :  if running then
-:    explore()
+:    if is_safe() then
+:      explore()
+:    else
+:      hit_closest()
+:    end
 :  end
 :end
 
@@ -109,6 +144,107 @@ macros += M p ===start_running
 :    running = false
 :  end
 :  crawl.sendkeys("o")
+:end
+
+############################################################################
+# combat                                                                   #
+############################################################################
+
+:function is_scared()
+:  if you.poison_survival() < 1 or you.caught() or you.confused() then
+:    return true
+:  end
+:  if not is_safe() then
+:    if find_scary_monster() then
+:      return true
+:    end
+:    return threat() >= 2 ^ 3 or
+:        hp_percent() < 75 or
+:        must_rest() or
+:        you.poisoned()
+:  end
+:  return false
+:end
+
+:function is_scary_monster(target)
+:  if target.is_unique(target) then
+:    return true
+:  end
+:  local names = {
+:    -- lair
+:    "oklob plant",
+:    "electric eel",
+:    "basilisk",
+:    "hydra",
+:    "dream sheep",
+:    "catoblepas",
+:    -- torment (todo: instead, check monster spell lists)
+:    "brimstone fiend",
+:    "curse skull",
+:    "curse toe",
+:    "ice fiend",
+:    "mummy priest",
+:    "royal mummy",
+:    "tormentor",
+:    "tzitzimitl",
+:    "lurking horror"
+:  }
+:  for index, name in ipairs(names) do
+:    if target.name(target):find(name) then
+:      return true
+:    end
+:  end
+:  return false
+:end
+
+:function find_scary_monster()
+:  for a = -8, 8 do
+:    for b = -8, 8 do
+:      c = monster.get_monster_at(a, b)
+:      if c and not c.is_safe(c) and is_scary_monster(c) then
+:        return c
+:      end
+:    end
+:  end
+:end
+
+:function threat()
+:  local result = 0
+:  for a = -8, 8 do
+:    for b = -8, 8 do
+:      c = monster.get_monster_at(a, b)
+:      if c and not c.is_safe(c) then
+:        result = result + calculate_threat(c)
+:      end
+:    end
+:  end
+:  return result
+:end
+
+:function calculate_threat(target)
+:  return 2 ^ target.threat(target)
+:end
+
+:function is_safe()
+:  for a = -8,8 do
+:    for b = -8,8 do
+:      c = monster.get_monster_at(a, b)
+:      if c and not c.is_safe(c) then
+:        return false
+:      end
+:    end
+:  end
+:  return true
+:end
+
+:function hp_percent()
+:  a, b = you.hp()
+:  return 100 * a / b
+:end
+
+:function mp_percent()
+:  a, b = you.mp()
+:  return 100 * a / b
 :end
 
 ############################################################################
@@ -151,6 +287,12 @@ macros += M p ===start_running
 :end
 
 :function is_junk_armour(item)
+:  if item.subtype() == "body" then
+:    local equipped = items.equipped_at("Armour")
+:    if equipped and is_scales(equipped) then
+:      return true
+:    end
+:  end
 :  if item.class(true) == "armour" and not item.branded then
 :    for other in inventory() do
 :      if compare_armour(item, other) < 0 then
@@ -174,6 +316,8 @@ macros += M p ===start_running
 :  end
 :  return false
 :end
+
+# rings are not supported yet
 
 :function is_junk_ring(item)
 :  local good_rings = {
@@ -656,24 +800,12 @@ macros += M p ===start_running
 # general utility                                                          #
 ############################################################################
 
-:function is_safe()
-: for a = -8,8 do
-:    for b = -8,8 do
-:       c = monster.get_monster_at(a, b)
-:       if c and not c.is_safe(c) then
-:         return false
-:       end
-:    end
-: end
-: return true
-:end
-
 :function in_last_message(message)
 :  return crawl.messages(1):find(message)
 :end
 
-:function print(value)
-:  crawl.mpr(tostring(value))
+:function print(value, channel)
+:  crawl.mpr(tostring(value), channel)
 :end
 
 :function compare(left, right)

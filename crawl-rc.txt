@@ -349,7 +349,7 @@ macros += M p ===step
 :      end
 :    end
 :  end
-:  return you.feel_safe()
+:  return false
 :end
 
 :function hp_percent()

@@ -1,6 +1,7 @@
 # DCSS 0.26
 
 # todo: bind . to prompt for waiting a turn?
+# todo: handle non-hostile enemies, breaks explore
 
 ############################################################################
 # options                                                                  #
@@ -274,22 +275,30 @@ macros += M 5 ===five
 :    if you.branch() == "D" then
 :      return ">"
 :    end
-:    return "D" .. string.char(13)
+:    return "D" .. goal_floor("D")
 :  end
 :  -- travel to Lair:6
 :  if progress("Lair") < 6 then
 :    if you.branch() == "Lair" then
 :      return ">"
 :    end
-:    return "L" .. string.char(13)
+:    return "L" .. goal_floor("Lair")
 :  end
 :  if progress("D") < 15 then
 :    if you.branch() == "D" then
 :      return ">"
 :    end
-:    return "D" .. travel.find_deepest_explored("D")
+:    return "D" .. goal_floor("D")
 :  end
 :  return ""
+:end
+
+:function goal_floor(branch)
+:  local result = travel.find_deepest_explored(branch)
+:  if result < 1 then
+:    return 1
+:  end
+:  return result
 :end
 
 ############################################################################
@@ -1277,5 +1286,5 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  print(find_monster("phantom"))
+:  print(goal_floor("Lair"))
 :end

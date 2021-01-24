@@ -1,5 +1,7 @@
 # DCSS 0.26
 
+# todo: bind . to prompt for waiting a turn?
+
 ############################################################################
 # options                                                                  #
 ############################################################################
@@ -740,7 +742,7 @@ macros += M 5 ===five
 :    return false
 :  end
 :  if item.class(true) == "weapon" and 
-:      not is_useless(item) then
+:      not is_slot_missing(item) then
 :    local best = best_damage(item.weap_skill)
 :    if item.damage > best then
 :      return true
@@ -754,7 +756,7 @@ macros += M 5 ===five
 
 :function want_armour(item)
 :  if item.class(true) == "armour" and
-:      not is_useless(item) and
+:      not is_slot_missing(item) and
 :      not is_scales(item) then
 :    local best = best_ac(item.subtype())
 :    if item.ac > best then
@@ -775,7 +777,7 @@ macros += M 5 ===five
 
 :function autopickup(item, name)
 :  if unneeded_duplicate(item) or
-:      is_useless(item) or
+:      is_slot_missing(item) or
 :      is_junk(item) then
 :    return false
 :  end
@@ -957,10 +959,10 @@ macros += M 5 ===five
 :  if amulet.subtype() == "amulet of faith" then
 :    return 4
 :  end
-:  if amulet.subtype() == "amulet of reflection" then
+:  if amulet.subtype() == "amulet of the acrobat" then
 :    return 3
 :  end
-:  if amulet.subtype() == "amulet of the acrobat" then
+:  if amulet.subtype() == "amulet of reflection" then
 :    return 2
 :  end
 :  if amulet.subtype() == "amulet of magic regeneration" then
@@ -1081,7 +1083,7 @@ macros += M 5 ===five
 :  return items.equipped_at(translations[subtype])
 :end
 
-:function is_useless(item)
+:function is_slot_missing(item)
 :  if item.class(true) == "armour" then
 :    return item.subtype() == "shield" or item.name():find("barding")
 :  end
@@ -1096,7 +1098,7 @@ macros += M 5 ===five
 :    if not item.equipped and
 :        not item.artefact and
 :        not is_dangerous(item) and
-:        not is_useless(item) and
+:        not is_slot_missing(item) and
 :        not is_junk(item) then
 :      if item.class(true) == "weapon" then
 :        local equipped = items.equipped_at("Weapon")

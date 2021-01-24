@@ -1,10 +1,4 @@
-# handle junk cloaks
-# still requires key press on some unid amulets
-# use invisible_monster (x, y) to auto-fight invisible?
-# code not to berserk on blinkers, then easy uniques?
-# floating eye, check for paralysis spells
-# bug: scary weapon function is flaky
-# bug: autofight failures don't cause running to stop, use hooks?
+# DCSS 0.26
 
 ############################################################################
 # options                                                                  #
@@ -17,14 +11,14 @@ bindkey = [p] CMD_NO_CMD_DEFAULT
 
 # prevents accidental movement
 
-bindkey = [y] CMD_NO_CMD_DEFAULT
-bindkey = [n] CMD_NO_CMD_DEFAULT
-bindkey = [b] CMD_NO_CMD_DEFAULT
-bindkey = [c] CMD_NO_CMD_DEFAULT
-bindkey = [Y] CMD_NO_CMD_DEFAULT
-bindkey = [N] CMD_NO_CMD_DEFAULT
-bindkey = [B] CMD_NO_CMD_DEFAULT
-bindkey = [C] CMD_NO_CMD_DEFAULT
+#bindkey = [y] CMD_NO_CMD_DEFAULT
+#bindkey = [n] CMD_NO_CMD_DEFAULT
+#bindkey = [b] CMD_NO_CMD_DEFAULT
+#bindkey = [c] CMD_NO_CMD_DEFAULT
+#bindkey = [Y] CMD_NO_CMD_DEFAULT
+#bindkey = [N] CMD_NO_CMD_DEFAULT
+#bindkey = [B] CMD_NO_CMD_DEFAULT
+#bindkey = [C] CMD_NO_CMD_DEFAULT
 
 # speeds up gameplay
 
@@ -75,6 +69,11 @@ explore_stop += greedy_pickup
 #autopickup_exceptions += polymorph, random effects
 autopickup_exceptions += <phantom mirror
 
+channel.multiturn = mute
+channel.talk = mute
+channel.talk_visual = mute
+use_animations -= beam
+
 species = ho
 background = be
 weapon = hand axe
@@ -103,6 +102,7 @@ macros += M 5 ===five
 :      in_last_message("exploring") or
 :      -- this does not work
 :      -- in_last_message("shaft crumbles and collapses") or
+:      in_last_message("standing in a cloud") or
 :      in_last_message("strange disturbance") or
 :      in_last_message("thing hits you") or
 :      in_last_message("too injured") or
@@ -284,16 +284,17 @@ macros += M 5 ===five
 :   -- electric
 :    "electric eel",
 :    "shock serpent",
-:    -- lair (todo: paralysis group?)
-:    -- basilisk has a petrify spell
+:    -- paralysis
+:    "floating eye",
 :    "basilisk",
-:    "hydra",
 :    "dream sheep",
 :    "catoblepas",
 :    -- torment
 :    "lurking horror",
 :    -- misc
-:    "manticore"
+:    "hydra",
+:    "manticore",
+:    "killer bee"
 :  }
 :  for _, name in ipairs(names) do
 :    if target.name(target):find(name) then
@@ -593,7 +594,8 @@ macros += M 5 ===five
 :  end
 :  if item.subtype() == "phantom mirror" then
 :    for other in inventory() do
-:      if not (item.slot == other.slot) then
+:      if other.subtype() == item.subtype() and
+:          not (item.slot == other.slot) then
 :        return true
 :      end
 :    end
@@ -620,6 +622,10 @@ macros += M 5 ===five
 :end
 
 :function want_weapon(item)
+:  if item.subtype() == "hand axe" then
+:    -- avoids early cursed hand axes
+:    return false
+:  end
 :  if item.class(true) == "weapon" and 
 :      not is_useless(item) then
 :    local best = best_damage(item.weap_skill)
@@ -736,14 +742,29 @@ macros += M 5 ===five
 :    if item.class(true) == "potion" then
 :      return true
 :    end
+:    if item.class(true) == "scroll" and
+:        scroll_of_identify_quantity() > 5 then
+:      return true
+:    end
 :  end
 :  return false
+:end
+
+:function scroll_of_identify_quantity()
+:  for item in inventory() do
+:    if item.class(true) == "scroll" and item.subtype() == "identify" then
+:      return item.quantity
+:    end
+:  end
+:  return 0
 :end
 
 :function identify_items()
 :  local id_letter = scroll_of_identify_letter()
 :  for item in inventory() do
-:    if item.class(true) == "scroll" and not item.fully_identified then
+:    if item.class(true) == "scroll" and
+:        not item.fully_identified and
+:        item.quantity > 1 then
 :      return read_scroll(items.index_to_letter(item.slot))
 :    end
 :    if want_to_identify(item) and not item.artefact and id_letter then
@@ -835,6 +856,65 @@ macros += M 5 ===five
 :  return 0
 :end
 
+:function compare_rings(left, right)
+:  -- todo: handle artefacts
+:  if left.artefact or right.artefact then
+:    return 0
+:  end
+:  if not is_ring(left) or not is_ring(right) then
+:    return 0
+:  end
+:  if not left.fully_identified or not right.fully_identified then
+:    return 0
+:  end
+:  return compare(ring_level(left), ring_level(right))
+:end
+
+:function ring_level(ring)
+:  -- todo: add better ring logic
+:  if ring.subtype() == "ring of see invisible" then
+:    return 0
+:  end
+:  if ring.subtype() == "ring of poison resistance" then
+:    return 0
+:  end
+:  if ring.subtype() == "ring of protection from fire" then
+:    return 0
+:  end
+:  if ring.subtype() == "ring of protection from cold" then
+:    return 0
+:  end
+:  if ring.subtype() == "ring of resist corrosion" then
+:    return 0
+:  end
+:  if ring.subtype() == "ring of positive energy" then
+:    return 0
+:  end
+:  if ring.subtype() == "ring of slaying" then
+:    return 7
+:  end
+:  if ring.subtype() == "ring of protection" then
+:    return 6
+:  end
+:  if ring.subtype() == "ring of evasion" then
+:    return 5
+:  end
+:  if ring.subtype() == "ring of willpower" then
+:    return 4
+:  end
+:  if ring.subtype() == "ring of stealth" then
+:    return 3
+:  end
+:  if ring.subtype() == "ring of strength" then
+:    return 2
+:  end
+:  if ring.subtype() == "ring of dexterity" then
+:    return 1
+:  end
+:  -- flight, magical power, wizardry, intelligence, fire, ice
+:  return 0
+:end
+
 :function faith_equipped()
 :  local amulet = items.equipped_at("Amulet")
 :  return amulet and amulet.subtype() == "amulet of faith"
@@ -853,7 +933,11 @@ macros += M 5 ===five
 :    if left.cursed or right.cursed then
 :      return item.puton()
 :    end
-:    letter = letter or items.index_to_letter(left.slot)
+:    if compare_rings(left, right) > 0 then
+:      letter = letter or items.index_to_letter(right.slot)
+:    else
+:      letter = letter or items.index_to_letter(left.slot)
+:    end
 :    crawl.sendkeys("P" .. items.index_to_letter(item.slot) .. letter)
 :    return true
 :  end
@@ -890,7 +974,8 @@ macros += M 5 ===five
 
 :function upgrade_equipment()
 :  for item in inventory() do
-:    if not item.artefact and
+:    if not item.equipped and
+:        not item.artefact and
 :        not is_dangerous(item) and
 :        not is_useless(item) and
 :        not is_junk(item) then
@@ -899,8 +984,7 @@ macros += M 5 ===five
 :        if not equipped or
 :            not item.fully_identified or
 :            compare_weapons(item, equipped) > 0 then
-:          if not item.equipped and
-:              not (equipped and equipped.cursed) and
+:          if not (equipped and equipped.cursed) and
 :              item.wield() then
 :            return true
 :          end
@@ -911,8 +995,7 @@ macros += M 5 ===five
 :        if not equipped or
 :            not item.fully_identified or
 :            compare_armour(item, equipped) > 0 then
-:          if not item.equipped and
-:              not (equipped and equipped.cursed) and
+:          if not (equipped and equipped.cursed) and
 :              item.wear() then
 :            return true
 :          end
@@ -923,8 +1006,7 @@ macros += M 5 ===five
 :        if not equipped or
 :            not item.fully_identified and not faith_equipped() or
 :            compare_amulets(item, equipped) > 0 then
-:          if not item.equipped and
-:              not (equipped and equipped.cursed) and
+:          if not (equipped and equipped.cursed) and
 :              item.puton() then
 :            return true
 :          end
@@ -938,6 +1020,18 @@ macros += M 5 ===five
 :              equip_ring(item) then
 :            return true
 :          end
+:        end
+:        local left = items.equipped_at("Left Ring")
+:        if not (left and left.cursed) and
+:            compare_rings(item, left) > 0 and
+:            equip_ring(item) then
+:          return true
+:        end
+:        local right = items.equipped_at("Right Ring")
+:        if not (right and right.cursed) and
+:            compare_rings(item, right) > 0 and
+:            equip_ring(item) then
+:          return true
 :        end
 :      end
 :    end
@@ -1079,5 +1173,7 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  print("DEBUG MESSAGE")
+:  for item in inventory() do
+:    print(item.subtype())
+:  end
 :end

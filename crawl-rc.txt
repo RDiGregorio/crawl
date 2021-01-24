@@ -256,8 +256,8 @@ macros += M 5 ===five
 :end
 
 :function find_up_stairs()
-:  for a = -8,8 do
-:    for b = -8,8 do
+:  for a = -8, 8 do
+:    for b = -8, 8 do
 :      c = view.feature_at(a, b)
 :      if c and c:find("stone_stairs_up") or c:find("escape_hatch_up") then
 :        found_up_stairs[you.branch() .. you.depth()] = true
@@ -369,8 +369,8 @@ macros += M 5 ===five
 :end
 
 :function find_monster(name)
-:  for a = -8,8 do
-:    for b = -8,8 do
+:  for a = -8, 8 do
+:    for b = -8, 8 do
 :      c = monster.get_monster_at(a, b)
 :      if c and not c.is_safe(c) and c.name(c):find(name) then
 :        return c
@@ -381,8 +381,8 @@ macros += M 5 ===five
 
 :function count_monsters()
 :  local result = 0
-:  for a = -8,8 do
-:    for b = -8,8 do
+:  for a = -8, 8 do
+:    for b = -8, 8 do
 :      c = monster.get_monster_at(a, b)
 :      if c and not c.is_safe(c) then
 :        result = result + 1
@@ -415,6 +415,7 @@ macros += M 5 ===five
 :      return true
 :    end
 :    if is_after_berserk() then
+:      -- this logic can be improved, you are fine with harmless monsters
 :      return threat() >= 2 ^ 2 or hp_percent() <= 75
 :    end
 :    return threat() >= 2 ^ 4 or hp_percent() <= 50
@@ -422,8 +423,21 @@ macros += M 5 ===five
 :  return false
 :end
 
+:function is_easy_unique(target)
+:  local names = {
+:    "Terence",
+:    "Jessica"
+:  }
+:  for _, name in ipairs(names) do
+:    if target.name(target):find(name) then
+:      return true
+:    end
+:  end
+:  return false
+:end
+
 :function is_scary_monster(target)
-:  if target.is_unique(target) or
+:  if target.is_unique(target) and not is_easy_unique(target) or
 :      has_spell(target, "Symbol of Torment") or
 :      has_spell(target, "Flay") then
 :    return true
@@ -573,8 +587,8 @@ macros += M 5 ===five
 :end
 
 :function is_safe()
-:  for a = -8,8 do
-:    for b = -8,8 do
+:  for a = -8, 8 do
+:    for b = -8, 8 do
 :      c = monster.get_monster_at(a, b)
 :      if c and not c.is_safe(c) then
 :        return false
@@ -1312,6 +1326,20 @@ macros += M 5 ===five
 :  return 0
 :end
 
+:function to_key(x, y)
+:  return 5 + clamp(x, -1, 1) - 3 * clamp(y, -1, 1)
+:end
+
+:function clamp(value, min, max)
+:  if value < min then
+:    return min
+:  end
+:  if value > max then
+:    return max
+:  end
+:  return value
+:end
+
 ############################################################################
 # hooks                                                                    #
 ############################################################################
@@ -1344,7 +1372,9 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  for item in inventory() do
-:    print(item.subtype())
+:  for x = -1, 1 do
+:    for y = -1, 1 do
+:      print("(" .. x .. ", " .. y .. "): " .. to_key(x, y))
+:    end
 :  end
 :end

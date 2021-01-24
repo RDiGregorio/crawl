@@ -229,7 +229,7 @@ macros += M 5 ===five
 :  else
 :    running = false
 :  end
-:  if shafted() then 
+:  if shafted() then
 :    if floor_complete() then
 :      stop_running()
 :      return
@@ -243,7 +243,10 @@ macros += M 5 ===five
 :  end
 :  if floor_complete() then
 :    if safe_to_descend() then
-:      crawl.sendkeys("G" .. goal())
+:      crawl.sendkeys("G" .. goal() .. string.char(13))
+
+:print("G" .. goal())
+
 :      return
 :    end
 :    stop_running()
@@ -274,8 +277,7 @@ macros += M 5 ===five
 :end
 
 :function update_progress()
-:  if not floor_progress[you.branch()] or
-:      you.depth() == floor_progress[you.branch()] + 1 then
+:  if you.depth() == progress() + 1 then
 :    floor_progress[you.branch()] = you.depth()
 :  end
 :end
@@ -285,39 +287,41 @@ macros += M 5 ===five
 :end
 
 :function safe_to_descend()
-:  return you.depth() <= floor_progress[you.branch()]
+:  return you.depth() <= progress()
 :end
 
 :function goal()
 :  -- travel to Dungeon:11
-:  if progress("D") < 11 then
+:  if progress("D") < 11 and progress("Lair") < 0 then
 :    if you.branch() == "D" then
-:      return ">"
+:      return "D" .. you.depth() + 1
 :    end
 :    return "D" .. goal_floor("D")
 :  end
 :  -- travel to Lair:6
 :  if progress("Lair") < 6 then
 :    if you.branch() == "Lair" then
-:      return ">"
+:      return "L" .. you.depth() + 1
 :    end
 :    return "L" .. goal_floor("Lair")
 :  end
+:  -- travel to Dungeon:15
 :  if progress("D") < 15 then
 :    if you.branch() == "D" then
-:      return ">"
+:      return "D" .. you.depth() + 1
 :    end
 :    return "D" .. goal_floor("D")
 :  end
+:  stop_running()
 :  return ""
 :end
 
 :function goal_floor(branch)
 :  local result = travel.find_deepest_explored(branch)
 :  if result < 1 then
-:    return "1"
+:    return 1
 :  end
-:  return tostring(result)
+:  return result
 :end
 
 ############################################################################
@@ -397,8 +401,7 @@ macros += M 5 ===five
 :end
 
 :function is_scared()
-:  if you.poison_survival() < 1 or
-:      you.caught() then
+:  if you.poison_survival() < 1 then
 :    return true
 :  end
 :  if not is_safe() then
@@ -408,8 +411,8 @@ macros += M 5 ===five
 :    if scary_weapon_present() then
 :      return true
 :    end
-:    if you.status("barbed spikes") then
-:      return false
+:    if you.status("barbed spikes") or you.caught() then
+:      return true
 :    end
 :    if is_after_berserk() then
 :      return threat() >= 2 ^ 2 or hp_percent() <= 75
@@ -1305,5 +1308,5 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  find_up_stairs()
+:  print(progress("Lair"))
 :end

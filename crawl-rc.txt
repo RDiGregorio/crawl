@@ -95,11 +95,16 @@ macros += M 5 ===five
 :  running = true
 :end
 
+:function stop_running()
+:  running = false
+:  print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+:end
+
 :function must_stop_running()
 :  if not running then
 :    return false
 :  end
-:  if floor_complete() or
+:  if --floor_complete() or
 :      in_last_message("standing in a cloud") or
 :      in_last_message("are on fire") or
 :      in_last_message("strange disturbance") or
@@ -127,8 +132,7 @@ macros += M 5 ===five
 :    update_progress()
 :  end
 :  if must_stop_running() then
-:    running = false
-:    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+:    stop_running()
 :  end
 :  local threat_level = threat()
 :  if threat_level > 0 then
@@ -165,9 +169,9 @@ macros += M 5 ===five
 
 :function step()
 :  if not running then
-:    running = true
+:    start_running()
 :    run()
-:    running = false
+:    stop_running()
 :  end
 :end
 
@@ -215,11 +219,23 @@ macros += M 5 ===five
 :  else
 :    running = false
 :  end
-:  if shafted() and not in_last_message("know how to get there") then
+:  if shafted() and not is_lost() then
 :    crawl.sendkeys("G<")
 :    return
 :  end
+:  if floor_complete() then
+:    if safe_to_descend() then
+:      crawl.sendkeys("G>")
+:      return
+:    end
+:    stop_running()
+:    return
+:  end
 :  crawl.sendkeys("o")
+:end
+
+:function is_lost()
+:  return in_last_message("know how to get there")
 :end
 
 :function floor_complete()
@@ -241,6 +257,10 @@ macros += M 5 ===five
 
 :function shafted()
 :  return you.depth() > progress() + 1
+:end
+
+:function safe_to_descend()
+:  return you.depth() == travel.find_deepest_explored(you.branch())
 :end
 
 ############################################################################
@@ -1211,5 +1231,6 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  print(shafted())
+:  --print(you.branch())
+:  --print()
 :end

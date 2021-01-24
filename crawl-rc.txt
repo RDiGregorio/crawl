@@ -248,7 +248,8 @@ macros += M 5 ===five
 
 :function progress(branch)
 :  branch = branch or you.branch()
-:  return floor_progress[branch] or 0
+:  return floor_progress[branch] or
+:    travel.find_deepest_explored(branch) - 1
 :end
 
 :function update_progress()
@@ -286,7 +287,7 @@ macros += M 5 ===five
 :    if you.branch() == "D" then
 :      return ">"
 :    end
-:    return "D" .. string.char(13)
+:    return "D" .. travel.find_deepest_explored("D")
 :  end
 :  return ""
 :end

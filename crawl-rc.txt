@@ -76,7 +76,9 @@ channel.intrinsic_gain = mute
 channel.multiturn = mute
 channel.talk = mute
 channel.talk_visual = mute
+
 use_animations -= beam
+#use_animations -= beam, range, hp, monster_in_sight, pickup, monster, player, branch_entry
 
 species = ho
 background = be
@@ -93,6 +95,8 @@ macros += M \{9} ===tab
 macros += M 5 ===five
 
 :local running = false
+:local floor_progress = {}
+:local found_up_stairs = {}
 
 :function start_running()
 :  running = true
@@ -107,7 +111,7 @@ macros += M 5 ===five
 :  if not running then
 :    return false
 :  end
-:  if --floor_complete() or
+:  if in_last_message("know how to get there") or
 :      in_last_message("standing in a cloud") or
 :      in_last_message("are on fire") or
 :      in_last_message("strange disturbance") or
@@ -133,6 +137,9 @@ macros += M 5 ===five
 :function run()
 :  if floor_complete() then
 :    update_progress()
+:  end
+:  if shafted() then
+:    find_up_stairs()
 :  end
 :  if must_stop_running() then
 :    stop_running()
@@ -222,8 +229,16 @@ macros += M 5 ===five
 :  else
 :    running = false
 :  end
-:  if shafted() and not is_lost() then
-:    crawl.sendkeys("G<")
+:  if shafted() then 
+:    if floor_complete() then
+:      stop_running()
+:      return
+:    end
+:    if found_up_stairs[you.branch() .. you.depth()] then
+:      crawl.sendkeys("G<")
+:      return
+:    end
+:    crawl.sendkeys("o")
 :    return
 :  end
 :  if floor_complete() then
@@ -237,15 +252,20 @@ macros += M 5 ===five
 :  crawl.sendkeys("o")
 :end
 
-:function is_lost()
-:  return in_last_message("know how to get there")
+:function find_up_stairs()
+:  for a = -8,8 do
+:    for b = -8,8 do
+:      c = view.feature_at(a, b)
+:      if c and c:find("stone_stairs_up") or c:find("escape_hatch_up") then
+:        found_up_stairs[you.branch() .. you.depth()] = true
+:      end
+:    end
+:  end
 :end
 
 :function floor_complete()
 :  return in_last_message("explore") or in_last_message("exploring")
 :end
-
-:local floor_progress = {}
 
 :function progress(branch)
 :  branch = branch or you.branch()
@@ -255,18 +275,17 @@ macros += M 5 ===five
 
 :function update_progress()
 :  if not floor_progress[you.branch()] or
-:      you.depth() > floor_progress[you.branch()] then
+:      you.depth() == floor_progress[you.branch()] + 1 then
 :    floor_progress[you.branch()] = you.depth()
 :  end
 :end
 
 :function shafted()
-:  -- note: if you save and load, the game thinks you were shafted
 :  return you.depth() > progress() + 1
 :end
 
 :function safe_to_descend()
-:  return you.depth() == travel.find_deepest_explored(you.branch())
+:  return you.depth() <= floor_progress[you.branch()]
 :end
 
 :function goal()
@@ -296,9 +315,9 @@ macros += M 5 ===five
 :function goal_floor(branch)
 :  local result = travel.find_deepest_explored(branch)
 :  if result < 1 then
-:    return 1
+:    return "1"
 :  end
-:  return result
+:  return tostring(result)
 :end
 
 ############################################################################
@@ -1286,5 +1305,5 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  print(goal_floor("Lair"))
+:  find_up_stairs()
 :end

@@ -69,6 +69,7 @@ explore_stop += greedy_pickup
 #autopickup_exceptions += polymorph, random effects
 autopickup_exceptions += <phantom mirror
 
+channel.intrinsic_gain = mute
 channel.multiturn = mute
 channel.talk = mute
 channel.talk_visual = mute
@@ -98,11 +99,9 @@ macros += M 5 ===five
 :  if not running then
 :    return false
 :  end
-:  if in_last_message("explore") or
-:      in_last_message("exploring") or
-:      -- this does not work
-:      -- in_last_message("shaft crumbles and collapses") or
+:  if floor_complete() or
 :      in_last_message("standing in a cloud") or
+:      in_last_message("are on fire") or
 :      in_last_message("strange disturbance") or
 :      in_last_message("thing hits you") or
 :      in_last_message("too injured") or
@@ -124,6 +123,9 @@ macros += M 5 ===five
 :end
 
 :function run()
+:  if floor_complete() then
+:    update_progress()
+:  end
 :  if must_stop_running() then
 :    running = false
 :    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -213,7 +215,32 @@ macros += M 5 ===five
 :  else
 :    running = false
 :  end
+:  if shafted() and not in_last_message("know how to get there") then
+:    crawl.sendkeys("G<")
+:    return
+:  end
 :  crawl.sendkeys("o")
+:end
+
+:function floor_complete()
+:  return in_last_message("explore") or in_last_message("exploring")
+:end
+
+:local floor_progress = {}
+
+:function progress()
+:  return floor_progress[you.branch()] or 0
+:end
+
+:function update_progress()
+:  if not floor_progress[you.branch()] or
+:      you.depth() > floor_progress[you.branch()] then
+:    floor_progress[you.branch()] = you.depth()
+:  end
+:end
+
+:function shafted()
+:  return you.depth() > progress() + 1
 :end
 
 ############################################################################
@@ -225,11 +252,16 @@ macros += M 5 ===five
 :    print("You are too injured to fight recklessly!")
 :    return
 :  end
+:  if threat() >= 2 ^ 5 then
+:    print("You should run!")
+:    return
+:  end
 :  crawl.sendkeys(string.char(9))
 :end
 
 :function five()
 :  if must_rest() or
+:      you.berserk() or
 :      crawl.yesno("Are you sure you want to wait?", true, "n") then
 :    crawl.sendkeys("5")
 :  end
@@ -250,19 +282,6 @@ macros += M 5 ===five
 
 :function is_angry()
 :  return threat() >= 2 ^ 3 or hp_percent() <= 75 or you.poisoned()
-:end
-
-# this is not that useful
-:function is_berserk_suicide()
-:  for a = -8,8 do
-:    for b = -8,8 do
-:      c = monster.get_monster_at(a, b)
-:      if c and has_spell(c, "Blink") then
-:        return true
-:      end
-:    end
-:  end
-:  return false
 :end
 
 :function berserk_disabled()
@@ -314,7 +333,8 @@ macros += M 5 ===five
 :    -- misc
 :    "hydra",
 :    "manticore",
-:    "killer bee",
+:    -- summoners
+:    "boggart",
 :    -- smite (flag all smiters like torment?)
 :    "meliai"
 :  }
@@ -419,13 +439,16 @@ macros += M 5 ===five
 :function calculate_threat(target)
 :  local hard_monsters = {
 :    -- big monsters
-:    "worm",
+:    --"worm",
 :    "ogre",
 :    "cyclops",
+:    "giant",
 :    -- todo: only hard without resistance
 :    "jelly",
 :    "sky beast",
 :    "ugly thing",
+:    -- other (not sure if bees are that hard?)
+:    -- "killer bee",
 :  }
 :  -- maybe ice beasts?
 :  local result = target.threat(target)
@@ -537,9 +560,10 @@ macros += M 5 ===five
 :        item.subtype() == "ring of attention" then
 :      return true
 :    end
-:    if item.plus and item.plus < 0 then
-:      return true
-:    end
+:    -- not needed?
+:    -- if item.plus and item.plus < 0 then
+:    --   return true
+:    -- end
 :  end
 :  return false
 :end
@@ -552,37 +576,6 @@ macros += M 5 ===five
 :  return false
 :end
 
-# rings are not supported yet
-
-:function is_junk_ring2(item)
-:  local good_rings = {
-:    "ring of evasion",
-:    "ring of poison resistance",
-:    "ring of positive energy",
-:    "ring of protection",
-:    "ring of protection from cold",
-:    "ring of protection from fire",
-:    "ring of resist corrosion",
-:    "ring of see invisible",
-:    "ring of slaying",
-:    "ring of willpower"
-:  }
-:  if is_ring(item) and
-:      item.subtype() and
-:      not item.artefact then
-:    if item.plus and item.plus < 0 then
-:      return true
-:    end
-:    for _, subtype in ipairs(good_rings) do
-:      if item.subtype() == subtype then
-:        return false
-:      end
-:    end
-:    return true
-:  end
-:  return false
-:end
-
 :function is_junk(item)
 :  if is_junk_weapon(item) or
 :      is_junk_armour(item) or
@@ -591,6 +584,9 @@ macros += M 5 ===five
 :      unneeded_duplicate(item) then
 :    return true
 :  end
+:    if item.plus and item.plus < 0 then
+:      return true
+:    end
 :  if burdened() and can_drop_if_burdened(item) then
 :    return true
 :  end
@@ -703,7 +699,7 @@ macros += M 5 ===five
 :function autopickup(item, name)
 :  if unneeded_duplicate(item) or
 :      is_useless(item) or
-:      is_junk_ring(item) then
+:      is_junk(item) then
 :    return false
 :  end
 :  if burdened() and can_drop_if_burdened(item) then
@@ -1215,5 +1211,5 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  print(is_berserk_suicide())
+:  print(shafted())
 :end

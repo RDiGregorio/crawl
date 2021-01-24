@@ -605,8 +605,16 @@ macros += M 5 ===five
 :end
 
 :function can_drop_if_burdened(item)
-:  if item.class(true) == "wand" then
-:    return not (item.subtype() == "digging")
+:  if item.class(true) == "wand" and
+:      not (item.subtype() == "digging") then
+:    for other in inventory() do
+:      -- keep if there is a worse wand that can be dropped instead
+:      if other.class(true) == "wand" and
+:          wand_level(other) < wand_level(item) then
+:        return false
+:      end
+:    end
+:    return true
 :  end
 :  return false
 :end
@@ -1044,6 +1052,37 @@ macros += M 5 ===five
 :  return 0
 :end
 
+:function wand_level(wand)
+:  if wand.subtype() == "digging" then
+:    return 9
+:  end
+:  if wand.subtype() == "acid" then
+:    return 8
+:  end
+:  if wand.subtype() == "iceblast" then
+:    return 7
+:  end
+:  if wand.subtype() == "paralysis" then
+:    return 6
+:  end
+:  if wand.subtype() == "enslavement" then
+:    return 5
+:  end
+:  if wand.subtype() == "disintegration" then
+:    return 4
+:  end
+:  if wand.subtype() == "flame" then
+:    return 3
+:  end
+:  if wand.subtype() == "polymorph" then
+:    return 2
+:  end
+:  if wand.subtype() == "random effects" then
+:    return 1
+:  end
+:  return 0
+:end
+
 :function faith_equipped()
 :  local amulet = items.equipped_at("Amulet")
 :  return amulet and amulet.subtype() == "amulet of faith"
@@ -1308,5 +1347,7 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  print(progress("Lair"))
+:  for item in inventory() do
+:    print(item.subtype())
+:  end
 :end

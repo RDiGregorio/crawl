@@ -1048,10 +1048,14 @@ macros += M 5 ===five
 :      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
 :      return true
 :    end
+:    if left.subtype() == right.subtype() and left.plus == right.plus then
+:      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
+:      return true
+:    end
 :    if compare_rings(left, right) > 0 then
-:      letter = letter or items.index_to_letter(right.slot)
+:      letter = letter or ">"
 :    else
-:      letter = letter or items.index_to_letter(left.slot)
+:      letter = letter or "<"
 :    end
 :    crawl.sendkeys("P" .. items.index_to_letter(item.slot) .. letter)
 :    return true

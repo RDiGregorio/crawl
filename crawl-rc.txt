@@ -339,7 +339,7 @@ macros += M 5 ===five
 :  for a = -8,8 do
 :    for b = -8,8 do
 :      c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) and not c.name(c):find(name) then
+:      if c and not c.is_safe(c) and c.name(c):find(name) then
 :        return c
 :      end
 :    end
@@ -593,6 +593,9 @@ macros += M 5 ===five
 
 :function is_junk_weapon(item)
 :  if item.class(true) == "weapon" then
+:    if not uses_weapon_skill(item) then
+:      return true
+:    end
 :    for other in inventory() do
 :      if compare_weapons(item, other) < 0 then
 :        return true
@@ -639,10 +642,6 @@ macros += M 5 ===five
 :        item.subtype() == "ring of attention" then
 :      return true
 :    end
-:    -- not needed?
-:    -- if item.plus and item.plus < 0 then
-:    --   return true
-:    -- end
 :  end
 :  return false
 :end
@@ -656,6 +655,9 @@ macros += M 5 ===five
 :end
 
 :function is_junk(item)
+:  if item.artefact then
+:    return false
+:  end
 :  if is_junk_weapon(item) or
 :      is_junk_armour(item) or
 :      is_junk_amulet(item) or
@@ -663,9 +665,9 @@ macros += M 5 ===five
 :      unneeded_duplicate(item) then
 :    return true
 :  end
-:    if item.plus and item.plus < 0 then
-:      return true
-:    end
+:  if item.plus and item.plus < 0 then
+:    return true
+:  end
 :  if burdened() and can_drop_if_burdened(item) then
 :    return true
 :  end
@@ -718,31 +720,12 @@ macros += M 5 ===five
 :  return false
 :end
 
-# duplicate detection is not supported yet
-
-:function unneeded_duplicate2(item)
-:  if item.artefact then
-:    return false
-:  end
-:  if item.class(true) == "jewellery" and item.subtype() or
-:      item.subtype() == "phantom mirror" then
-:    for other in inventory() do
-:      if item.subtype() == other.subtype() and
-:          not (item.slot == other.slot) then
-:        return true
-:      end
-:    end
-:  end
-:  return false
-:end
-
 :function want_weapon(item)
 :  if item.subtype() == "hand axe" then
 :    -- avoids early cursed hand axes
 :    return false
 :  end
-:  if item.class(true) == "weapon" and 
-:      not is_slot_missing(item) then
+:  if item.class(true) == "weapon" then
 :    local best = best_damage(item.weap_skill)
 :    if item.damage > best then
 :      return true
@@ -756,7 +739,6 @@ macros += M 5 ===five
 
 :function want_armour(item)
 :  if item.class(true) == "armour" and
-:      not is_slot_missing(item) and
 :      not is_scales(item) then
 :    local best = best_ac(item.subtype())
 :    if item.ac > best then
@@ -1087,9 +1069,6 @@ macros += M 5 ===five
 :  if item.class(true) == "armour" then
 :    return item.subtype() == "shield" or item.name():find("barding")
 :  end
-:  if item.class(true) == "weapon" then
-:    return not uses_weapon_skill(item)
-:  end
 :  return false
 :end
 
@@ -1297,5 +1276,5 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  print(progress())
+:  print(find_monster("phantom"))
 :end

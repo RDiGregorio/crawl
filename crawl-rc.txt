@@ -178,8 +178,11 @@ macros += M 5 ===five
 :      hp_percent() < 100 or
 :      mp_percent() < 100 or
 :      you.slowed() or
+:      you.silencing() or
 :      you.confused() or
-:      you.status("barbed spikes")
+:      you.status("barbed spikes") or
+:      you.status("marked") or
+:      you.corrosion() > 0
 :end
 
 :function is_after_berserk()
@@ -239,8 +242,25 @@ macros += M 5 ===five
 :  if threat(1) == 0 then
 :    return false
 :  end
-:  if threat() >= 2 ^ 3 or hp_percent() <= 75 or you.poisoned() then
+:  if is_angry() then
 :    return true
+:  end
+:  return false
+:end
+
+:function is_angry()
+:  return threat() >= 2 ^ 3 or hp_percent() <= 75 or you.poisoned()
+:end
+
+# this is not that useful
+:function is_berserk_suicide()
+:  for a = -8,8 do
+:    for b = -8,8 do
+:      c = monster.get_monster_at(a, b)
+:      if c and has_spell(c, "Blink") then
+:        return true
+:      end
+:    end
 :  end
 :  return false
 :end
@@ -294,7 +314,9 @@ macros += M 5 ===five
 :    -- misc
 :    "hydra",
 :    "manticore",
-:    "killer bee"
+:    "killer bee",
+:    -- smite (flag all smiters like torment?)
+:    "meliai"
 :  }
 :  for _, name in ipairs(names) do
 :    if target.name(target):find(name) then
@@ -395,7 +417,25 @@ macros += M 5 ===five
 :end
 
 :function calculate_threat(target)
-:  return 2 ^ target.threat(target)
+:  local hard_monsters = {
+:    -- big monsters
+:    "worm",
+:    "ogre",
+:    "cyclops",
+:    -- todo: only hard without resistance
+:    "jelly",
+:    "sky beast",
+:    "ugly thing",
+:  }
+:  -- maybe ice beasts?
+:  local result = target.threat(target)
+:  for _, name in ipairs(hard_monsters) do
+:    if target.name(target):find(name)
+:        or has_spell(target, "Smiting") then
+:      return 2 ^ (result + 1)
+:    end
+:  end
+:  return 2 ^ result
 :end
 
 :function is_safe()
@@ -923,7 +963,8 @@ macros += M 5 ===five
 :function equip_ring(item, letter)
 :  if is_ring(item) then
 :    if is_ring_missing() then
-:      return item.puton()
+:      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
+:      return true
 :    end
 :    local left = items.equipped_at("Left Ring")
 :    local right = items.equipped_at("Right Ring")
@@ -931,7 +972,8 @@ macros += M 5 ===five
 :      return false
 :    end
 :    if left.cursed or right.cursed then
-:      return item.puton()
+:      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
+:      return true
 :    end
 :    if compare_rings(left, right) > 0 then
 :      letter = letter or items.index_to_letter(right.slot)
@@ -1006,8 +1048,8 @@ macros += M 5 ===five
 :        if not equipped or
 :            not item.fully_identified and not faith_equipped() or
 :            compare_amulets(item, equipped) > 0 then
-:          if not (equipped and equipped.cursed) and
-:              item.puton() then
+:          if not (equipped and equipped.cursed) then
+:            crawl.sendkeys("P" .. items.index_to_letter(item.slot))
 :            return true
 :          end
 :        end
@@ -1173,7 +1215,5 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  for item in inventory() do
-:    print(item.subtype())
-:  end
+:  print(is_berserk_suicide())
 :end

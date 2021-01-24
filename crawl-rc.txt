@@ -225,7 +225,7 @@ macros += M 5 ===five
 :  end
 :  if floor_complete() then
 :    if safe_to_descend() then
-:      crawl.sendkeys("G>")
+:      crawl.sendkeys("G" .. goal())
 :      return
 :    end
 :    stop_running()
@@ -244,8 +244,9 @@ macros += M 5 ===five
 
 :local floor_progress = {}
 
-:function progress()
-:  return floor_progress[you.branch()] or 0
+:function progress(branch)
+:  branch = branch or you.branch()
+:  return floor_progress[branch] or 0
 :end
 
 :function update_progress()
@@ -256,11 +257,36 @@ macros += M 5 ===five
 :end
 
 :function shafted()
+:  -- note: if you save and load, the game thinks you were shafted
 :  return you.depth() > progress() + 1
 :end
 
 :function safe_to_descend()
 :  return you.depth() == travel.find_deepest_explored(you.branch())
+:end
+
+:function goal()
+:  -- travel to Dungeon:11
+:  if progress("D") < 11 then
+:    if you.branch() == "D" then
+:      return ">"
+:    end
+:    return "D" .. string.char(13)
+:  end
+:  -- travel to Lair:6
+:  if progress("Lair") < 6 then
+:    if you.branch() == "Lair" then
+:      return ">"
+:    end
+:    return "L" .. string.char(13)
+:  end
+:  if progress("D") < 15 then
+:    if you.branch() == "D" then
+:      return ">"
+:    end
+:    return "D" .. string.char(13)
+:  end
+:  return ""
 :end
 
 ############################################################################
@@ -288,7 +314,7 @@ macros += M 5 ===five
 :end
 
 :function must_berserk()
-:  if is_safe() or berserk_disabled() then
+:  if is_safe() or berserk_disabled() or is_berserk_bad() then
 :    return false
 :  end
 :  if threat(1) == 0 then
@@ -298,6 +324,37 @@ macros += M 5 ===five
 :    return true
 :  end
 :  return false
+:end
+
+:function is_berserk_bad()
+:  if find_monster("phantom") and count_monsters() == 1 then
+:    return true
+:  end
+:  return false
+:end
+
+:function find_monster(name)
+:  for a = -8,8 do
+:    for b = -8,8 do
+:      c = monster.get_monster_at(a, b)
+:      if c and not c.is_safe(c) and not c.name(c):find(name) then
+:        return c
+:      end
+:    end
+:  end
+:end
+
+:function count_monsters()
+:  local result = 0
+:  for a = -8,8 do
+:    for b = -8,8 do
+:      c = monster.get_monster_at(a, b)
+:      if c and not c.is_safe(c) then
+:        result = result + 1
+:      end
+:    end
+:  end
+:  return result
 :end
 
 :function is_angry()
@@ -546,7 +603,7 @@ macros += M 5 ===five
 :function is_junk_armour(item)
 :  if item.subtype() == "body" then
 :    local equipped = items.equipped_at("Armour")
-:    if equipped and is_scales(equipped) then
+:    if equipped and is_scales(equipped) and not is_scales(item) then
 :      return true
 :    end
 :  end
@@ -1207,7 +1264,10 @@ macros += M 5 ===five
 ############################################################################
 
 :function c_answer_prompt(prompt)
-:  if prompt:find("Keep disrobing") or prompt:find("Keep equipping") then
+:  if prompt:find("Keep equipping") then
+:    return true
+:  end
+:  if prompt:find("Keep disrobing") then
 :    return false
 :  end
 :  if prompt:find("Really unwield") or
@@ -1231,6 +1291,5 @@ macros += M 5 ===five
 macros += M c ===debug
 
 :function debug()
-:  --print(you.branch())
-:  --print()
+:  print(progress())
 :end

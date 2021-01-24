@@ -702,7 +702,7 @@ macros += M 5 ===five
 :      is_junk_armour(item) or
 :      is_junk_amulet(item) or
 :      is_junk_ring(item) or
-:      unneeded_duplicate(item) then
+:      is_unneeded_duplicate(item) then
 :    return true
 :  end
 :  if item.plus and item.plus < 0 then
@@ -745,7 +745,7 @@ macros += M 5 ===five
 # autopickup                                                               #
 ############################################################################
 
-:function unneeded_duplicate(item)
+:function is_unneeded_duplicate(item)
 :  if item.artefact then
 :    return false
 :  end
@@ -798,12 +798,9 @@ macros += M 5 ===five
 :end
 
 :function autopickup(item, name)
-:  if unneeded_duplicate(item) or
+:  if is_unneeded_duplicate(item) or
 :      is_slot_missing(item) or
 :      is_junk(item) then
-:    return false
-:  end
-:  if burdened() and can_drop_if_burdened(item) then
 :    return false
 :  end
 :  if item.artefact then

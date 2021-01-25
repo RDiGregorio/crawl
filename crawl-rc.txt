@@ -110,7 +110,7 @@ macros += M 5 ===wait
 :  if not running then
 :    return false
 :  end
-:  if invisible_monster_present() then
+:  if is_invisible_monster_present() then
 :    --return true
 :  end
 :  if in_last_message("know how to get there") or
@@ -162,14 +162,14 @@ macros += M 5 ===wait
 :      print_scary_weapons()
 :    end
 :  end
-:  if invisible_monster_present() then
+:  if is_invisible_monster_present() then
 :    update_invisible_waypoint()
 :  else
 :    invisible_waypoint_exists = false
 :  end
 :  if running then
 :    crawl.more_autoclear(true)
-:    if is_safe() and not invisible_monster_present() then
+:    if is_very_safe() then
 :      explore()
 :    else
 :      if must_berserk() then
@@ -212,7 +212,7 @@ macros += M 5 ===wait
 :end
 
 :function explore()
-:  if is_safe() then
+:  if is_very_safe() then
 :    if you.berserk() or must_rest() then
 :      crawl.sendkeys("5")
 :      return
@@ -353,7 +353,7 @@ macros += M 5 ===wait
 :    crawl.sendkeys(string.char(9))
 :    return
 :  end
-:  if invisible_monster_present() then
+:  if is_invisible_monster_present() then
 :    if find_invisible(1) then
 :      local x, y = find_invisible(1)
 :      crawl.sendkeys(to_key(x, y))
@@ -398,7 +398,7 @@ macros += M 5 ===wait
 :end
 
 :function must_berserk()
-:  if is_safe() and not invisible_monster_present()
+:  if is_very_safe()
 :      or berserk_disabled()
 :      or is_berserk_bad() then
 :    return false
@@ -456,7 +456,7 @@ macros += M 5 ===wait
 :  if you.poison_survival() < 1 then
 :    return true
 :  end
-:  if not is_safe() then
+:  if not is_very_safe() then
 :    if scary_monster_present() then
 :      return true
 :    end
@@ -621,7 +621,9 @@ macros += M 5 ===wait
 :    "cyclops",
 :    "giant",
 :    -- electric monsters
-:    "sky beast"
+:    "sky beast",
+:    -- misc
+:    "ugly thing"
 :  }
 :
 :  local result = target.threat(target)
@@ -645,6 +647,10 @@ macros += M 5 ===wait
 :    end
 :  end
 :  return true
+:end
+
+:function is_very_safe()
+:  return is_safe() and not is_invisible_monster_present()
 :end
 
 :function hp_percent()
@@ -725,7 +731,7 @@ macros += M 5 ===wait
 :  end
 :end
 
-:function invisible_monster_present()
+:function is_invisible_monster_present()
 :  return not options.autopick_on or find_invisible()
 :end
 

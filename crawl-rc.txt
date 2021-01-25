@@ -64,7 +64,7 @@ explore_stop += greedy_pickup
 
 #autopickup_exceptions += brilliance, holy word, silence
 #autopickup_exceptions += polymorph, random effects
-autopickup_exceptions += <phantom mirror
+autopickup_exceptions += <phantom mirror, <throwing net
 
 channel.intrinsic_gain = mute
 channel.multiturn = mute
@@ -90,6 +90,13 @@ macros += M o ===start_running
 macros += M p ===step
 macros += M \{9} ===tab
 macros += M 5 ===wait
+
+:local POPCORN = 2 ^ 0
+:local EASY = 2 ^ 1
+:local MEDIUM = 2 ^ 2
+:local HARD = 2 ^ 3
+:local NIGHTMARE = 2 ^ 4
+:local IMPOSSIBLE = 2 ^ 5
 
 :local running = false
 :local floor_progress = {}
@@ -160,9 +167,8 @@ macros += M 5 ===wait
 :  if threat_level > 0 then
 :    local channel = nil
 :    local message = "Danger: "
-:    message = message .. math.floor(100 * threat_level / 16) .. "%"
-:    message = message .. " (" .. math.floor(hp_percent()) .. "% health)"
-:    if threat_level >= 2 ^ 4 then
+:    message = message .. math.floor(danger_percent()) .. "%"
+:    if threat_level >= IMPOSSIBLE then
 :      channel = 6
 :    end
 :    print(message, channel)
@@ -187,7 +193,7 @@ macros += M 5 ===wait
 :        crawl.sendkeys("aa")
 :        return
 :      end
-:      tab()
+:      tab(true)
 :    end
 :  else
 :    crawl.more_autoclear(false)
@@ -231,7 +237,7 @@ macros += M 5 ===wait
 :    if remove_curse() then
 :      return
 :    end
-:    if ready_to_identify_items() and identify_items() then
+:    if identify_items() then
 :      return
 :    end
 :    if upgrade_equipment() then
@@ -365,8 +371,8 @@ macros += M 5 ===wait
 :  -- todo: allow reckless fighting in some cases
 :end
 
-:function tab()
-:  if hp_percent() <= 50 and not is_fearless() then
+:function tab(is_reckless)
+:  if hp_percent() <= 50 and not is_reckless then
 :    print("You are too injured to fight recklessly!")
 :    return
 :  end
@@ -467,7 +473,7 @@ macros += M 5 ===wait
 :end
 
 :function is_angry()
-:  return threat() >= 2 ^ 3 or hp_percent() <= 75 or you.poisoned()
+:  return adjusted_threat() >= MEDIUM * 4 / 3 or you.poisoned()
 :end
 
 :function berserk_disabled()
@@ -489,10 +495,7 @@ macros += M 5 ===wait
 :      return true
 :    end
 :    if not is_fearless() then
-:      if is_after_berserk() then
-:        return true
-:      end
-:      return threat() >= 2 ^ 4 or hp_percent() <= 50
+:      return adjusted_threat() >= NIGHTMARE
 :    end
 :  end
 :  return false
@@ -635,9 +638,22 @@ macros += M 5 ===wait
 :  return result
 :end
 
+:function adjusted_threat()
+:  local result = threat()
+:  if you.slowed() then
+:    result = result * 2
+:  end
+:  return result * 100 / hp_percent()
+:end
+
+:function danger_percent()
+:  return adjusted_threat() * 100 / IMPOSSIBLE
+:end
+
 :function calculate_threat(target)
 :  local hard_monsters = {
-:    -- big monsters
+:    -- tanks
+:    "worm",
 :    "ogre",
 :    "cyclops",
 :    "giant",
@@ -854,6 +870,9 @@ macros += M 5 ===wait
 :        item.subtype() == "ring of attention" then
 :      return true
 :    end
+:    if item.plus and item.plus < 0 then
+:      return true
+:    end
 :  end
 :  return false
 :end
@@ -875,9 +894,6 @@ macros += M 5 ===wait
 :      is_junk_amulet(item) or
 :      is_junk_ring(item) or
 :      is_unneeded_duplicate(item) then
-:    return true
-:  end
-:  if item.plus and item.plus < 0 then
 :    return true
 :  end
 :  if burdened() and can_drop_if_burdened(item) then
@@ -1073,7 +1089,7 @@ macros += M 5 ===wait
 :        item.quantity > 1 then
 :      return read_scroll(items.index_to_letter(item.slot))
 :    end
-:    if want_to_identify(item) and not item.artefact and id_letter then
+:    if id_letter and not item.artefact and want_to_identify(item) then
 :      return read_scroll(id_letter .. items.index_to_letter(item.slot))
 :    end
 :  end

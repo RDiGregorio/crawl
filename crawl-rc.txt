@@ -2,6 +2,7 @@
 
 # todo: bind . to prompt for waiting a turn?
 # todo: handle non-hostile enemies, breaks explore
+# use adjacent enemies to calculate berserk
 
 ############################################################################
 # options                                                                  #
@@ -28,11 +29,8 @@ easy_confirm = all
 automagic_enable = true
 autofight_stop = 0
 
-force_more_message += flicker back into view
 force_more_message += you miscast
 force_more_message += know that spell
-force_more_message += resists
-force_more_message += struggles to resist
 force_more_message += calcifying dust hits you
 force_more_message += unable to access your magic
 force_more_message += too confused to cast spells
@@ -41,18 +39,22 @@ force_more_message += powers of darkness
 force_more_message += horrible wounds
 force_more_message += smites you
 force_more_message += back at you
-force_more_message += transformation is almost over
-force_more_message += back to life
 force_more_message += magic feels tainted
-force_more_message += winds around you calm down
-force_more_message += translocation energy dissipates
 force_more_message += mighty Pandemonium lord
 force_more_message += grow feeble
 force_more_message += are being watched
-#force_more_message += feel yourself slow down
 
-runrest_stop_message += transformation is almost over
-runrest_stop_message += back to life
+#force_more_message += feel yourself slow down
+#force_more_message += flicker back into view
+#force_more_message += winds around you calm down
+#force_more_message += translocation energy dissipates
+#force_more_message += resists
+#force_more_message += struggles to resist
+
+#force_more_message += transformation is almost over
+#force_more_message += back to life
+#runrest_stop_message += transformation is almost over
+#runrest_stop_message += back to life
 
 explore_stop = stairs, shops, altars, portals, branches, runed_doors
 explore_stop += greedy_pickup
@@ -65,6 +67,7 @@ channel.intrinsic_gain = mute
 channel.multiturn = mute
 channel.talk = mute
 channel.talk_visual = mute
+message_colour += mute:menu to convert
 
 use_animations -= beam
 #use_animations -= beam, range, hp, monster_in_sight, pickup, monster, player, branch_entry
@@ -276,25 +279,34 @@ macros += M 5 ===wait
 :end
 
 :function safe_to_descend()
-:  return you.depth() <= progress()
+:  return you.depth() == travel.find_deepest_explored(you.branch()) or
+:      you.depth() < progress()
 :end
 
 :function goal()
-:  -- travel to Dungeon:11
-:  if progress("D") < 11 and progress("Lair") < 0 then
+:  -- complete D:11
+:  if progress("D") < 11 then
 :    if you.branch() == "D" then
 :      return "D" .. you.depth() + 1
 :    end
 :    return "D" .. goal_floor("D")
 :  end
-:  -- travel to Lair:6
+:  -- complete Lair:6
 :  if progress("Lair") < 6 then
 :    if you.branch() == "Lair" then
 :      return "L" .. you.depth() + 1
 :    end
 :    return "L" .. goal_floor("Lair")
 :  end
-:  -- travel to Dungeon:15
+:  -- complete Orc:2
+:  -- todo: handle disconnected rooms
+:  if progress("Orc") < 2 then
+:    if you.branch() == "Orc" then
+:      return "O" .. you.depth() + 1
+:    end
+:    return "O" .. goal_floor("Orc")
+:  end
+:  -- complete Dungeon:15
 :  if progress("D") < 15 then
 :    if you.branch() == "D" then
 :      return "D" .. you.depth() + 1
@@ -1393,6 +1405,6 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  local monster = adjacent_monster()
-:  if monster then print(monster:name(monster)) end
+:  print(progress("D"))
+:  print(progress("Lair"))
 :end

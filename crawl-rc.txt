@@ -113,6 +113,7 @@ macros += M 5 ===wait
 :  end
 :  if in_last_message("know how to get there") or
 :      in_last_message("standing in a cloud") or
+:      in_last_message("held in a net") or
 :      in_last_message("are on fire") or
 :      in_last_message("too injured") or
 :      in_last_message("too confused") or
@@ -344,6 +345,13 @@ macros += M 5 ===wait
 :    print("You are too injured to fight recklessly!")
 :    return
 :  end
+:  if you.caught() then
+:    if hit_closest_monster() then
+:      return
+:    end
+:    crawl.sendkeys(string.char(9))
+:    return
+:  end
 :  if invisible_monster_present() then
 :    if find_invisible(1) then
 :      local x, y = find_invisible(1)
@@ -374,15 +382,8 @@ macros += M 5 ===wait
 :      return
 :    end
 :  end
-:  if you.confused() then
-:    local target = closest_monster()
-:    if target then
-:      local x, y = target.pos(target)
-:      if distance(x, y) == 1 or
-:          traversable(clamp(x, -1, 1), clamp(y, -1, 1)) then
-:        crawl.sendkeys(to_key(clamp(x, -1, 1), clamp(y, -1, 1)))
-:      end
-:    end
+:  if you.confused() and hit_closest_monster() then
+:    return
 :  end
 :  crawl.sendkeys(string.char(9))
 :end
@@ -688,6 +689,19 @@ macros += M 5 ===wait
 :    end
 :  end
 :  return result
+:end
+
+:function hit_closest_monster()
+:  local target = closest_monster()
+:  if target then
+:    local x, y = target.pos(target)
+:    if distance(x, y) == 1 or
+:        traversable(clamp(x, -1, 1), clamp(y, -1, 1)) then
+:      crawl.sendkeys(to_key(clamp(x, -1, 1), clamp(y, -1, 1)))
+:      return true
+:    end
+:  end
+:  return false
 :end
 
 :function traversable(x, y)

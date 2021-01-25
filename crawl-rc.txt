@@ -103,11 +103,14 @@ macros += M 5 ===wait
 :  if not running then
 :    return false
 :  end
+:  if not options.autopick_on then
+:    return true
+:  end
 :  if in_last_message("know how to get there") or
 :      in_last_message("standing in a cloud") or
 :      in_last_message("are on fire") or
 :      in_last_message("strange disturbance") or
-:      in_last_message("thing hits you") or
+:      -- in_last_message("thing hits you") or
 :      in_last_message("too injured") or
 :      in_last_message("too confused") or
 :      in_last_message("reachable target") then
@@ -340,6 +343,9 @@ macros += M 5 ===wait
 :      crawl.sendkeys(to_key(target.pos(target)))
 :      return
 :    end
+:  end
+:  if is_safe() and find_invisible() and fight_invisible() then
+:    return
 :  end
 :  crawl.sendkeys(string.char(9))
 :end
@@ -629,6 +635,30 @@ macros += M 5 ===wait
 :    end
 :  end
 :  return result
+:end
+
+:function traversable(x, y)
+:  return travel.feature_traversable(view.feature_at(x, y)) and
+:      not monster.get_monster_at(x, y)
+:end
+
+:function find_invisible()
+:  for a = -8, 8 do
+:    for b = -8, 8 do
+:      if view.invisible_monster(a, b) then
+:        return a, b
+:      end
+:    end
+:  end
+:end
+
+:function fight_invisible()
+:  local x, y = find_invisible()
+:  if x and y and traversable(clamp(x, -1, 1), clamp(y, -1, 1)) then
+:    crawl.sendkeys(to_key(clamp(x, -1, 1), clamp(y, -1, 1)))
+:    return true
+:  end
+:  return false
 :end
 
 ############################################################################
@@ -1405,6 +1435,5 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  print(progress("D"))
-:  print(progress("Lair"))
+:  print(options.autopick_on)
 :end

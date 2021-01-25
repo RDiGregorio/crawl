@@ -3,6 +3,7 @@
 # todo: bind . to prompt for waiting a turn?
 # todo: handle non-hostile enemies, breaks explore
 # use adjacent enemies to calculate berserk
+# possibly change the default logic for resting to run up stairs?
 
 ############################################################################
 # options                                                                  #
@@ -68,6 +69,7 @@ channel.intrinsic_gain = mute
 channel.multiturn = mute
 channel.talk = mute
 channel.talk_visual = mute
+channel.timed_portal = mute
 message_colour += mute:menu to convert
 message_colour += mute:waypoint 0 re-assigned
 
@@ -109,7 +111,7 @@ macros += M 5 ===wait
 :    return false
 :  end
 :  if invisible_monster_present() then
-:    return true
+:    --return true
 :  end
 :  if in_last_message("know how to get there") or
 :      in_last_message("standing in a cloud") or
@@ -162,13 +164,12 @@ macros += M 5 ===wait
 :  end
 :  if invisible_monster_present() then
 :    update_invisible_waypoint()
-:    print("There is a strange disturbance nearby!", 6)
 :  else
 :    invisible_waypoint_exists = false
 :  end
 :  if running then
 :    crawl.more_autoclear(true)
-:    if is_safe() then
+:    if is_safe() and not invisible_monster_present() then
 :      explore()
 :    else
 :      if must_berserk() then
@@ -397,19 +398,22 @@ macros += M 5 ===wait
 :end
 
 :function must_berserk()
-:  if is_safe() or berserk_disabled() or is_berserk_bad() then
+:  if is_safe() and not invisible_monster_present()
+:      or berserk_disabled()
+:      or is_berserk_bad() then
 :    return false
+:  end
+:  if find_invisible(1) then
+:    return true
 :  end
 :  if threat(1) == 0 then
 :    return false
 :  end
-:  if is_angry() then
-:    return true
-:  end
-:  return false
+:  return is_angry()
 :end
 
 :function is_berserk_bad()
+:  -- todo: improve this function, add more cases
 :  if find_monster("phantom") and count_monsters() == 1 then
 :    return true
 :  end
@@ -463,8 +467,9 @@ macros += M 5 ===wait
 :      return true
 :    end
 :    if is_after_berserk() then
-:      -- this logic can be improved, you are fine with harmless monsters
-:      return threat() >= 2 ^ 2 or hp_percent() <= 75
+:      -- this logic can be improved
+:      -- return threat() >= 2 ^ 2 or hp_percent() <= 75
+:      return true
 :    end
 :    return threat() >= 2 ^ 4 or hp_percent() <= 50
 :  end

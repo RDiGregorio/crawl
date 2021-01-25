@@ -95,6 +95,15 @@ macros += M 5 ===wait
 :local floor_progress = {}
 :local found_up_stairs = {}
 :local invisible_waypoint_exists = false
+:local previous_turns = -1
+
+:function did_turn_fail()
+:  if you.turns() == previous_turns then
+:    return true
+:  end
+:  previous_turns = you.turns()
+:  return false
+:end
 
 :function start_running()
 :  running = true
@@ -115,6 +124,7 @@ macros += M 5 ===wait
 :    --return true
 :  end
 :  if in_last_message("know how to get there") or
+:      in_last_message("would you want") or
 :      in_last_message("standing in a cloud") or
 :      in_last_message("held in a net") or
 :      in_last_message("are on fire") or
@@ -243,6 +253,12 @@ macros += M 5 ===wait
 :      return
 :    end
 :    if found_up_stairs[you.branch() .. you.depth()] then
+:      -- fail safe for if stairs are found but unreachable
+:      if did_turn_fail() then
+:        crawl.sendkeys("o")
+:        stop_running()
+:        return
+:      end
 :      crawl.sendkeys("G<")
 :      return
 :    end
@@ -363,8 +379,7 @@ macros += M 5 ===wait
 :  end
 :  if is_invisible_monster_present() then
 :    if find_invisible(1) then
-:      local x, y = find_invisible(1)
-:      crawl.sendkeys(to_key(x, y))
+:      crawl.sendkeys("*" .. to_key(find_invisible(1)))
 :      return
 :    end
 :    if is_safe() then
@@ -377,8 +392,7 @@ macros += M 5 ===wait
 :          end
 :          return
 :        end
-:        if distance(x, y) == 1 or
-:            traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
+:        if traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
 :          crawl.sendkeys(to_key(clamp(-x, -1, 1), clamp(-y, -1, 1)))
 :          return
 :        else
@@ -511,7 +525,6 @@ macros += M 5 ===wait
 :    "shock serpent",
 :    -- paralysis
 :    "floating eye",
-:    "basilisk",
 :    "dream sheep",
 :    "catoblepas",
 :    -- torment
@@ -628,10 +641,13 @@ macros += M 5 ===wait
 :    "ogre",
 :    "cyclops",
 :    "giant",
+:    -- packs
+:    "gnoll",
+:    "ugly thing",
 :    -- electric monsters
 :    "sky beast",
-:    -- misc
-:    "ugly thing"
+:    -- petrification
+:    "basilisk",
 :  }
 :
 :  local result = target.threat(target)
@@ -1529,6 +1545,4 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  local target = closest_monster()
-:  print(target.name(target))
 :end

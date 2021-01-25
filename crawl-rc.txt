@@ -360,7 +360,8 @@ macros += M 5 ===wait
 :          end
 :          return
 :        end
-:        if traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
+:        if distance(x, y) == 1 or
+:            traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
 :          crawl.sendkeys(to_key(clamp(-x, -1, 1), clamp(-y, -1, 1)))
 :          return
 :        else
@@ -374,10 +375,13 @@ macros += M 5 ===wait
 :    end
 :  end
 :  if you.confused() then
-:    local target = adjacent_monster()
+:    local target = closest_monster()
 :    if target then
-:      crawl.sendkeys(to_key(target.pos(target)))
-:      return
+:      local x, y = target.pos(target)
+:      if distance(x, y) == 1 or
+:          traversable(clamp(x, -1, 1), clamp(y, -1, 1)) then
+:        crawl.sendkeys(to_key(clamp(x, -1, 1), clamp(y, -1, 1)))
+:      end
 :    end
 :  end
 :  crawl.sendkeys(string.char(9))
@@ -664,16 +668,20 @@ macros += M 5 ===wait
 :  return true
 :end
 
-:function adjacent_monster()
+:function closest_monster(radius)
+:  radius = radius or 8
 :  local result = nil
+:  local result_distance = radius
 :  local result_threat = 0
-:  for a = -1, 1 do
-:    for b = -1, 1 do
+:  for a = -radius, radius do
+:    for b = -radius, radius do
 :      local c = monster.get_monster_at(a, b)
 :      if c and not c.is_safe(c) then
+:        local d = distance(c.pos(c))
 :        local threat = calculate_threat(c)
-:        if threat > result_threat then
+:        if d <= result_distance and threat > result_threat then
 :          result = c
+:          result_distance = d
 :          result_threat = threat
 :        end
 :      end
@@ -1452,6 +1460,10 @@ macros += M 5 ===wait
 :  return value
 :end
 
+:function distance(x, y)
+:  return math.max(math.abs(x), math.abs(y))
+:end
+
 ############################################################################
 # hooks                                                                    #
 ############################################################################
@@ -1484,5 +1496,6 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  print(is_safe())
+:  local target = closest_monster()
+:  print(target.name(target))
 :end

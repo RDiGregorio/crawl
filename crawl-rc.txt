@@ -515,7 +515,8 @@ macros += M 5 ===wait
 :end
 
 :function is_scary_monster(target)
-:  if target.is_unique(target) and not is_easy_unique(target) or
+:  -- experimental: not considering all uniques scary
+:  if -- target.is_unique(target) and not is_easy_unique(target) or
 :      has_spell(target, "Symbol of Torment") or
 :      has_spell(target, "Flay") then
 :    return true
@@ -660,10 +661,12 @@ macros += M 5 ===wait
 :    -- packs
 :    "gnoll",
 :    "ugly thing",
+:    -- poison monsters
+:    "adder",
 :    -- electric monsters
 :    "sky beast",
 :    -- petrification
-:    "basilisk",
+:    "basilisk"
 :  }
 :
 :  local result = target.threat(target)
@@ -1044,21 +1047,9 @@ macros += M 5 ===wait
 :  end
 :end
 
-:function ready_to_identify_items()
-:  if scroll_of_identify_letter() then
-:    return true
-:  end
-:  for item in inventory() do
-:    if want_to_identify(item) then
-:      return true
-:    end
-:  end
-:  return false
-:end
-
-:function want_to_identify(item)
-:  if not item.fully_identified then
-:    if faith_equipped() and is_amulet(item) then
+:function want_to_identify_with_scroll(item)
+:  if not item.fully_identified and not item.artefact then
+:    if is_faith_equipped() and is_amulet(item) then
 :      return true
 :    end
 :    if item.class(true) == "potion" then
@@ -1066,6 +1057,15 @@ macros += M 5 ===wait
 :    end
 :    if item.class(true) == "scroll" and
 :        scroll_of_identify_quantity() > 5 then
+:      return true
+:    end
+:  end
+:  return false
+:end
+
+:function want_to_use_scroll_of_identify()
+:  for item in inventory() do
+:    if want_to_identify_with_scroll(item) then
 :      return true
 :    end
 :  end
@@ -1082,14 +1082,23 @@ macros += M 5 ===wait
 :end
 
 :function identify_items()
-:  local id_letter = scroll_of_identify_letter()
-:  for item in inventory() do
-:    if item.class(true) == "scroll" and
-:        not item.fully_identified and
-:        item.quantity > 1 then
-:      return read_scroll(items.index_to_letter(item.slot))
+:  local id_letter = scroll_of_identify_letter() 
+:  -- identify scroll of identify
+:  if not id_letter then
+:    if want_to_use_scroll_of_identify() then
+:      for item in inventory() do
+:        if item.class(true) == "scroll" and
+:            not item.fully_identified and
+:            item.quantity > 1 then
+:          return read_scroll(items.index_to_letter(item.slot))
+:        end
+:      end
 :    end
-:    if id_letter and not item.artefact and want_to_identify(item) then
+:    return
+:  end
+:  -- use scroll of identify
+:  for item in inventory() do
+:    if want_to_identify_with_scroll(item) then
 :      return read_scroll(id_letter .. items.index_to_letter(item.slot))
 :    end
 :  end
@@ -1268,7 +1277,7 @@ macros += M 5 ===wait
 :  return 0
 :end
 
-:function faith_equipped()
+:function is_faith_equipped()
 :  local amulet = items.equipped_at("Amulet")
 :  return amulet and amulet.subtype() == "amulet of faith"
 :end
@@ -1360,7 +1369,7 @@ macros += M 5 ===wait
 :      if is_amulet(item) then
 :        local equipped = items.equipped_at("Amulet")
 :        if not equipped or
-:            not item.fully_identified and not faith_equipped() or
+:            not item.fully_identified and not is_faith_equipped() or
 :            compare_amulets(item, equipped) > 0 then
 :          if not (equipped and equipped.cursed) then
 :            crawl.sendkeys("P" .. items.index_to_letter(item.slot))

@@ -1083,23 +1083,19 @@ macros += M 5 ===wait
 
 :function identify_items()
 :  local id_letter = scroll_of_identify_letter() 
-:  -- identify scroll of identify
-:  if not id_letter then
-:    if want_to_use_scroll_of_identify() then
-:      for item in inventory() do
-:        if item.class(true) == "scroll" and
-:            not item.fully_identified and
-:            item.quantity > 1 then
-:          return read_scroll(items.index_to_letter(item.slot))
-:        end
-:      end
-:    end
-:    return
-:  end
-:  -- use scroll of identify
 :  for item in inventory() do
-:    if want_to_identify_with_scroll(item) then
-:      return read_scroll(id_letter .. items.index_to_letter(item.slot))
+:    if item.class(true) == "scroll" and
+:        not item.fully_identified and
+:        item.quantity > 1 and
+:        (id_letter or want_to_use_scroll_of_identify()) then
+:      return read_scroll(items.index_to_letter(item.slot))
+:    end
+:  end
+:  if id_letter then
+:    for item in inventory() do
+:      if want_to_identify_with_scroll(item) then
+:        return read_scroll(id_letter .. items.index_to_letter(item.slot))
+:      end
 :    end
 :  end
 :  return false

@@ -3,7 +3,7 @@
 # todo: bind . to prompt for waiting a turn?
 # todo: handle non-hostile enemies, breaks explore
 # use adjacent enemies to calculate berserk
-# possibly change the default logic for resting to run up stairs?
+# if last message is "it is a..." you can handle the logic
 
 ############################################################################
 # options                                                                  #
@@ -98,18 +98,22 @@ macros += M 5 ===wait
 :local NIGHTMARE = 2 ^ 4
 :local IMPOSSIBLE = 2 ^ 5
 
+:local ENTER_KEY = string.char(13)
+:local TAB_KEY = string.char(9)
+
 :local running = false
 :local floor_progress = {}
 :local found_up_stairs = {}
 :local invisible_waypoint_exists = false
-:local previous_turns = -1
+:local previous_turn = -1
 
-:function did_turn_fail()
-:  if you.turns() == previous_turns then
-:    return true
+:function attempt(keys)
+:  if you.turns() == previous_turn then
+:    return false
 :  end
-:  previous_turns = you.turns()
-:  return false
+:  previous_turn = you.turns()
+:  crawl.sendkeys(keys)
+:  return true
 :end
 
 :function start_running()
@@ -127,10 +131,7 @@ macros += M 5 ===wait
 :  if not running then
 :    return false
 :  end
-:  if is_invisible_monster_present() then
-:    --return true
-:  end
-:  if in_last_message("know how to get there") or
+:  if --in_last_message("know how to get there") or
 :      in_last_message("would you want") or
 :      in_last_message("standing in a cloud") or
 :      in_last_message("held in a net") or
@@ -231,7 +232,7 @@ macros += M 5 ===wait
 :function explore()
 :  if is_very_safe() then
 :    if you.berserk() or must_rest() then
-:      crawl.sendkeys("5")
+:      smart_rest()
 :      return
 :    end
 :    if remove_curse() then
@@ -259,12 +260,7 @@ macros += M 5 ===wait
 :      return
 :    end
 :    if found_up_stairs[you.branch() .. you.depth()] then
-:      -- fail safe for if stairs are found but unreachable
-:      if did_turn_fail() then
-:        crawl.sendkeys("o")
-:        stop_running()
-:        return
-:      end
+:      -- can fail if stairs are found but unreachable
 :      crawl.sendkeys("G<")
 :      return
 :    end
@@ -273,13 +269,41 @@ macros += M 5 ===wait
 :  end
 :  if floor_complete() then
 :    if safe_to_descend() then
-:      crawl.sendkeys("G" .. goal() .. string.char(13))
+:      crawl.sendkeys("G" .. goal() .. ENTER_KEY)
 :      return
 :    end
 :    stop_running()
 :    return
 :  end
 :  crawl.sendkeys("o")
+:end
+
+:function smart_rest()
+:  if you.feel_safe() and not is_invisible_monster_present() then
+:    if is_up_stairs(0, 0) or
+:        is_down_stairs(0, 0) or
+:        not attempt("X<" .. ENTER_KEY) then
+:      crawl.sendkeys("5")
+:    end
+:  end
+:end
+
+:function is_up_stairs(x, y)
+:  local feature = view.feature_at(x, y)
+:  if feature then
+:    return feature:find("stone_stairs_up") or
+:        feature:find("escape_hatch_up") or
+:        feature:find("exit")
+:  end
+:  return false
+:end
+
+:function is_down_stairs(x, y)
+:  local feature = view.feature_at(x, y)
+:  if feature then
+:    return feature:find("stairs_down")
+:  end
+:  return false
 :end
 
 :function find_up_stairs()
@@ -380,7 +404,7 @@ macros += M 5 ===wait
 :    if hit_closest_monster() then
 :      return
 :    end
-:    crawl.sendkeys(string.char(9))
+:    crawl.sendkeys(TAB_KEY)
 :    return
 :  end
 :  if is_invisible_monster_present() then
@@ -414,7 +438,7 @@ macros += M 5 ===wait
 :  if you.confused() and hit_closest_monster() then
 :    return
 :  end
-:  crawl.sendkeys(string.char(9))
+:  crawl.sendkeys(TAB_KEY)
 :end
 
 :function wait()
@@ -716,7 +740,7 @@ macros += M 5 ===wait
 :    if view.feature_at(0, 0) == "exit_dungeon" then
 :      return false
 :    end
-:    crawl.sendkeys("X<" .. string.char(13))
+:    crawl.sendkeys("X<" .. ENTER_KEY)
 :    return true
 :  end
 :  crawl.sendkeys("G<")
@@ -792,7 +816,7 @@ macros += M 5 ===wait
 
 :function drop(item)
 :  local letter = items.index_to_letter(item.slot)
-:  crawl.sendkeys("d" .. letter .. string.char(13))
+:  crawl.sendkeys("d" .. letter .. ENTER_KEY)
 :end
 
 :function can_drop_if_burdened(item)
@@ -977,7 +1001,8 @@ macros += M 5 ===wait
 :    end
 :    if item.subtype() == "helmet" or
 :        item.subtype() == "cloak" or
-:        item.damage == best then
+:        item.subtype() == "gloves" or
+:        item.subtype() == "boots" then
 :      return item.branded
 :    end
 :  end

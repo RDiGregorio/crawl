@@ -102,11 +102,13 @@ macros += M 5 ===wait
 :local NIGHTMARE = 2 ^ 4
 :local IMPOSSIBLE = 2 ^ 5
 
-:local ENTER_KEY = string.char(13)
-:local TAB_KEY = string.char(9)
 :local ESCAPE_KEY = string.char(27)
+:local BACKSPACE_KEY = string.char(8)
+:local TAB_KEY = string.char(9)
+:local ENTER_KEY = string.char(13)
 
 :local running = false
+:local escaping = false
 :local floor_progress = {}
 :local found_up_stairs = {}
 :local invisible_waypoint_exists = false
@@ -152,12 +154,16 @@ macros += M 5 ===wait
 
 :function ready()
 :  crawl.redraw_screen()
-:  clear_temporary_exclusions()
+:  --clear_temporary_exclusions()
 :  if you.turns() == 0 then
 :    you.train_skill("Axes", 2)
 :    you.train_skill("Armour", 1)
 :    you.train_skill("Fighting", 1)
 :    you.train_skill("Dodging", 0)
+:  end
+:  if escaping then
+:    escape()
+:    return
 :  end
 :  run()
 :end
@@ -1617,6 +1623,9 @@ macros += M 5 ===wait
 :  if prompt:find("Keep disrobing") then
 :    return false
 :  end
+:  if prompt:find("Really attack") then
+:    return false
+:  end
 :  if prompt:find("Really unwield") or
 :      prompt:find("Really take off") or
 :      prompt:find("Really remove") or
@@ -1638,13 +1647,31 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  autism_escape()
+:  disable_attacking()
 :end
 
-:function autism_escape()
+:function disable_attacking()
+:  local item = items.equipped_at("Weapon")
+:  if item and not (item.inscription == "!a") then
+:    local letter = items.index_to_letter(item.slot)
+:    local inscription = "!a"
+:    crawl.sendkeys("i" .. letter .. "i" .. inscription .. ENTER_KEY)
+:  end
+:end
+
+:function enable_attacking()
+:  local item = items.equipped_at("Weapon")
+:  if item and item.inscription == "!a" then
+:    local letter = items.index_to_letter(item.slot)
+:    local inscription = BACKSPACE_KEY .. BACKSPACE_KEY
+:    crawl.sendkeys("i" .. letter .. "i" .. inscription .. ENTER_KEY)
+:  end
+:end
+
+:function escape()
 :  temporarily_exclude_monsters()
-:  if not attempt("X<." .. ESCAPE_KEY) then
-:    stop_running()
-:    print("Escape failed!")
+:  crawl.more()
+:  if is_up_stairs(0, 0) or not attempt("X<." .. ESCAPE_KEY) then
+:    escaping = false
 :  end
 :end

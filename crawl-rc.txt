@@ -850,14 +850,21 @@ macros += M 5 ===wait
 
 :function is_junk_weapon(item)
 :  if item.class(true) == "weapon" then
-:    if not uses_weapon_skill(item) then
+:    if not uses_weapon_skill(item) or god_hates(item) then
 :      return true
 :    end
 :    for other in inventory() do
-:      if compare_weapons(item, other) < 0 then
+:      if not god_hates(other) and compare_weapons(item, other) < 0 then
 :        return true
 :      end
 :    end
+:  end
+:  return false
+:end
+
+:function god_hates(item)
+:  if you.god() == "Trog" and item:ego() == "pain" then
+:    return true
 :  end
 :  return false
 :end

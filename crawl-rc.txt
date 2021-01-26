@@ -5,6 +5,8 @@
 # use adjacent enemies to calculate berserk
 # if last message is "it is a..." you can handle the logic
 # use the jewellery_prompt option?
+# can delete waypoints with ctrl+W
+# use the c_message hook instead of searching last message!
 
 ############################################################################
 # options                                                                  #
@@ -102,12 +104,14 @@ macros += M 5 ===wait
 
 :local ENTER_KEY = string.char(13)
 :local TAB_KEY = string.char(9)
+:local ESCAPE_KEY = string.char(27)
 
 :local running = false
 :local floor_progress = {}
 :local found_up_stairs = {}
 :local invisible_waypoint_exists = false
 :local previous_turn = -1
+:local temporary_exclusion_exists = {}
 
 :function attempt(keys)
 :  if you.turns() == previous_turn then
@@ -147,6 +151,8 @@ macros += M 5 ===wait
 :end
 
 :function ready()
+:  crawl.redraw_screen()
+:  clear_temporary_exclusions()
 :  if you.turns() == 0 then
 :    you.train_skill("Axes", 2)
 :    you.train_skill("Armour", 1)
@@ -284,7 +290,7 @@ macros += M 5 ===wait
 :  if you.feel_safe() and not is_invisible_monster_present() then
 :    if is_up_stairs(0, 0) or
 :        is_down_stairs(0, 0) or
-:        not attempt("X<.") then
+:        not attempt("X<." .. ESCAPE_KEY) then
 :      crawl.sendkeys("5")
 :    end
 :  end
@@ -742,7 +748,7 @@ macros += M 5 ===wait
 :    if view.feature_at(0, 0) == "exit_dungeon" then
 :      return false
 :    end
-:    crawl.sendkeys("X<.")
+:    crawl.sendkeys("X<." .. ESCAPE_KEY)
 :    return true
 :  end
 :  crawl.sendkeys("G<")
@@ -810,6 +816,34 @@ macros += M 5 ===wait
 :    travel.set_waypoint(0, x, y)
 :    invisible_waypoint_exists = true
 :  end
+:end
+
+############################################################################
+# exclusions                                                               #
+############################################################################
+
+:function clear_temporary_exclusions()
+:  if temporary_exclusion_exists[you.branch() .. you.depth()] then
+:    crawl.sendkeys("X" .. control("e") .. ESCAPE_KEY)
+:    temporary_exclusion_exists[you.branch() .. you.depth()] = false
+:  end
+:end
+
+:function temporarily_exclude_monsters()
+:  for a = -8, 8 do
+:    for b = -8, 8 do
+:      local c = monster.get_monster_at(a, b)
+:      if c and not c.is_safe(c) then
+:        local x, y = c:pos()
+:        temporarily_exclude(x, y)
+:      end
+:    end
+:  end
+:end
+
+:function temporarily_exclude(x, y)
+:  travel.set_exclude(x, y, 0)
+:  temporary_exclusion_exists[you.branch() .. you.depth()] = true
 :end
 
 ############################################################################
@@ -1568,6 +1602,10 @@ macros += M 5 ===wait
 :  return math.max(math.abs(x), math.abs(y))
 :end
 
+:function control(letter)
+:  return string.char(string.byte(letter) - string.byte("a") + 1)
+:end
+
 ############################################################################
 # hooks                                                                    #
 ############################################################################
@@ -1600,4 +1638,13 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
+:  autism_escape()
+:end
+
+:function autism_escape()
+:  temporarily_exclude_monsters()
+:  if not attempt("X<." .. ESCAPE_KEY) then
+:    stop_running()
+:    print("Escape failed!")
+:  end
 :end

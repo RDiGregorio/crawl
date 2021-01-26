@@ -4,6 +4,7 @@
 # todo: handle non-hostile enemies, breaks explore
 # use adjacent enemies to calculate berserk
 # if last message is "it is a..." you can handle the logic
+# use the jewellery_prompt option?
 
 ############################################################################
 # options                                                                  #
@@ -71,6 +72,7 @@ channel.multiturn = mute
 channel.talk = mute
 channel.talk_visual = mute
 channel.timed_portal = mute
+channel.monster_damage = mute
 message_colour += mute:menu to convert
 message_colour += mute:waypoint 0 re-assigned
 
@@ -282,7 +284,7 @@ macros += M 5 ===wait
 :  if you.feel_safe() and not is_invisible_monster_present() then
 :    if is_up_stairs(0, 0) or
 :        is_down_stairs(0, 0) or
-:        not attempt("X<" .. ENTER_KEY) then
+:        not attempt("X<.") then
 :      crawl.sendkeys("5")
 :    end
 :  end
@@ -740,7 +742,7 @@ macros += M 5 ===wait
 :    if view.feature_at(0, 0) == "exit_dungeon" then
 :      return false
 :    end
-:    crawl.sendkeys("X<" .. ENTER_KEY)
+:    crawl.sendkeys("X<.")
 :    return true
 :  end
 :  crawl.sendkeys("G<")

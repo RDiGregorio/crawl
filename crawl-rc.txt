@@ -113,13 +113,14 @@ macros += M 5 ===wait
 :local no_reachable_target = false
 
 :local escaping = false
-:local floor_progress = {}
-:local found_up_stairs = {}
+:local cleared_depth = {}
 :local invisible_waypoint_exists = false
 :local attempt_turns = {}
 :local temporary_exclusion_exists = {}
 
 :function attempt(keys, index)
+:  -- always returns true when first called
+:  -- returns false if called more than once in the same turn
 :  index = index or "default"
 :  local turns = attempt_turns[index] or -1
 :  if you.turns() == turns then
@@ -151,8 +152,7 @@ macros += M 5 ===wait
 :      in_last_message("held in a net") or
 :      in_last_message("are on fire") or
 :      in_last_message("too injured") or
-:      in_last_message("too confused") or
-:      in_last_message("reachable target") then
+:      in_last_message("too confused") then
 :    return true
 :  end
 :  return is_scared()
@@ -180,16 +180,10 @@ macros += M 5 ===wait
 :end
 
 :function run()
-:  if floor_complete() then
-:    update_progress()
-:  end
-:  if shafted() then
-:    find_up_stairs()
-:  end
 :  if must_stop_running() then
 :    stop_running()
 :  end
-:  local threat_level = threat()
+:  local threat_level = adjusted_threat()
 :  if threat_level > 0 then
 :    local channel = nil
 :    local message = "Danger: "
@@ -280,16 +274,7 @@ macros += M 5 ===wait
 :    return
 :  end
 :  if shafted() then
-:    if floor_complete() then
-:      stop_running()
-:      return
-:    end
-:    if found_up_stairs[you.branch() .. you.depth()] then
-:      -- can fail if stairs are found but unreachable
-:      crawl.sendkeys("G<")
-:      return
-:    end
-:    crawl.sendkeys("o")
+:    unshaft()
 :    return
 :  end
 :  if floor_complete() then
@@ -305,11 +290,13 @@ macros += M 5 ===wait
 
 :function smart_rest()
 :  if you.feel_safe() and not is_invisible_monster_present() then
-:    if is_up_stairs(0, 0) or
-:        is_down_stairs(0, 0) or
-:        not attempt("X<." .. ESCAPE_KEY) then
-:      crawl.sendkeys("5")
-:    end
+:    crawl.sendkeys("5")
+:    -- this doesn't work too well
+:    --if is_up_stairs(0, 0) or
+:    --    is_down_stairs(0, 0) or
+:    --    not attempt("X<." .. ESCAPE_KEY) then
+:    --  crawl.sendkeys("5")
+:    --end
 :  end
 :end
 
@@ -331,35 +318,30 @@ macros += M 5 ===wait
 :  return false
 :end
 
-:function find_up_stairs()
-:  for a = -8, 8 do
-:    for b = -8, 8 do
-:      local c = view.feature_at(a, b)
-:      if c and c:find("stone_stairs_up") or c:find("escape_hatch_up") then
-:        found_up_stairs[you.branch() .. you.depth()] = true
-:      end
-:    end
-:  end
-:end
-
 :function floor_complete()
 :  return in_last_message("explore") or in_last_message("exploring")
 :end
 
 :function progress(branch)
 :  branch = branch or you.branch()
-:  return floor_progress[branch] or
+:  return cleared_depth[branch] or
 :    travel.find_deepest_explored(branch) - 1
-:end
-
-:function update_progress()
-:  if you.depth() == progress() + 1 then
-:    floor_progress[you.branch()] = you.depth()
-:  end
 :end
 
 :function shafted()
 :  return you.depth() > progress() + 1
+:end
+
+:function unshaft()
+:  if is_up_stairs(0, 0) then
+:    crawl.sendkeys("<")
+:    return
+:  end
+:  if not attempt("X<." .. ESCAPE_KEY, "unshaft") then
+:    if not attempt("o") then
+:      stop_running()
+:    end
+:  end
 :end
 
 :function safe_to_descend()
@@ -426,7 +408,7 @@ macros += M 5 ===wait
 :    return
 :  end
 :  if you.caught() then
-:    crawl.sendkeys("1")
+:    crawl.sendkeys("b")
 :    return
 :  end
 :  if is_invisible_monster_present() then
@@ -480,15 +462,11 @@ macros += M 5 ===wait
 :  if find_invisible(1) then
 :    return true
 :  end
-:  if threat(1) == 0 then
-:    return false
-:  end
 :  return is_angry()
 :end
 
 :function is_berserk_bad()
-:  -- todo: improve this function, add more cases
-:  if find_monster("phantom") and count_monsters() == 1 then
+:  if you.caught() then
 :    return true
 :  end
 :  return false
@@ -519,7 +497,8 @@ macros += M 5 ===wait
 :end
 
 :function is_angry()
-:  return adjusted_threat() >= MEDIUM * 4 / 3 or you.poisoned()
+:  return adjusted_threat(1) >= EASY * 4 / 3 and
+:    adjusted_threat() >= MEDIUM * 4 / 3
 :end
 
 :function berserk_disabled()
@@ -685,16 +664,19 @@ macros += M 5 ===wait
 :  return result
 :end
 
-:function adjusted_threat()
-:  local result = threat()
-:  if you.slowed() then
+:function adjusted_threat(radius)
+:  local result = threat(1)
+:  if you.slowed() or
+:      you.poisoned() or
+:      you.corrosion() > 0 then
 :    result = result * 2
 :  end
 :  return result * 100 / hp_percent()
 :end
 
 :function danger_percent()
-:  return adjusted_threat() * 100 / IMPOSSIBLE
+:  return math.min(adjusted_threat() * 100 / IMPOSSIBLE, 999)
+
 :end
 
 :function calculate_threat(target)
@@ -1712,6 +1694,12 @@ macros += M 5 ===wait
 :    no_reachable_target = true
 :    return
 :  end
+:  if in_last_message("explore") or in_last_message("exploring") then
+:    if you.depth() == progress() + 1 then
+:      cleared_depth[you.branch()] = you.depth()
+:    end
+:    return
+:  end
 :  if text:find("know how to get there") then
 :    -- stop_running()
 :  end
@@ -1728,9 +1716,11 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
-:  local x, y = travel.waypoint_delta(1)
-:  print(tostring(x) .. ", " .. tostring(y))
+:  print(shafted())
+:  print(progress())
+:  --crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
+:  --local x, y = travel.waypoint_delta(1)
+:  --print(tostring(x) .. ", " .. tostring(y))
 :end
 
 :function debug2()
@@ -1750,7 +1740,7 @@ macros += M c ===debug
 :end
 
 :function mini_explore()
-:  return attempt("Xo." .. ESCAPE_KEY)
+:  crawl.sendkeys("Xo." .. ESCAPE_KEY)
 :end
 
 :function enable_attacking()

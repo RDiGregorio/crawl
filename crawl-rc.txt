@@ -1,12 +1,12 @@
 # DCSS 0.26
 
 # todo: bind . to prompt for waiting a turn?
-# todo: handle non-hostile enemies, breaks explore
 # use adjacent enemies to calculate berserk
-# if last message is "it is a..." you can handle the logic
 # use the jewellery_prompt option?
 # can delete waypoints with ctrl+W
 # use the c_message hook instead of searching last message!
+
+# handle oklob plant
 
 ############################################################################
 # options                                                                  #
@@ -147,7 +147,7 @@ macros += M 5 ===wait
 :  end
 :  if in_last_message("would you want") or
 :      in_last_message("standing in a cloud") or
-:      in_last_message("held in a net") or
+:      -- in_last_message("held in a net") or
 :      in_last_message("are on fire") or
 :      in_last_message("too injured") or
 :      in_last_message("too confused") then
@@ -171,7 +171,7 @@ macros += M 5 ===wait
 :      stop_running()
 :      return
 :    end
-:    mini_explore()
+:    attempt_mini_explore()
 :    no_reachable_target = false
 :    return
 :  end
@@ -205,9 +205,16 @@ macros += M 5 ===wait
 :  end
 :  if running then
 :    crawl.more_autoclear(true)
-:    if is_very_safe() then
+:    if is_safe() then
 :      explore()
 :    else
+:      if no_monsters_present() then
+:        -- helps with clouds
+:        if not attempt_mini_explore() then
+:          stop_running()
+:        end
+:        return
+:      end
 :      if must_berserk() then
 :        crawl.sendkeys("aa")
 :        return
@@ -248,7 +255,7 @@ macros += M 5 ===wait
 :end
 
 :function explore()
-:  if is_very_safe() then
+:  if is_safe() then
 :    if you.berserk() or must_rest() then
 :      smart_rest()
 :      return
@@ -413,12 +420,12 @@ macros += M 5 ===wait
 :      crawl.sendkeys("*" .. to_key(find_invisible(1)))
 :      return
 :    end
-:    if no_visible_monsters() then
+:    if no_visible_monsters_present() then
 :      if invisible_waypoint_exists then
 :        local x, y = travel.waypoint_delta(0)
 :        if x == 0 and y == 0 then
 :          invisible_waypoint_exists = false
-:          if not flee() then
+:          if not escape_from_invisible_monster() then
 :            stop_running()
 :          end
 :          return
@@ -430,7 +437,7 @@ macros += M 5 ===wait
 :          invisible_waypoint_exists = false
 :        end
 :      end
-:      if not flee() then
+:      if not escape_from_invisible_monster() then
 :        stop_running()
 :      end
 :      return
@@ -451,7 +458,7 @@ macros += M 5 ===wait
 :end
 
 :function must_berserk()
-:  if is_very_safe()
+:  if is_safe()
 :      or berserk_disabled()
 :      or is_berserk_bad() then
 :    return false
@@ -506,7 +513,7 @@ macros += M 5 ===wait
 :  if you.poison_survival() < 1 then
 :    return true
 :  end
-:  if not is_very_safe() then
+:  if not is_safe() then
 :    if scary_monster_present() then
 :      return true
 :    end
@@ -694,7 +701,7 @@ macros += M 5 ===wait
 :  return 2 ^ result
 :end
 
-:function no_visible_monsters()
+:function no_visible_monsters_present()
 :  for a = -8, 8 do
 :    for b = -8, 8 do
 :      local c = monster.get_monster_at(a, b)
@@ -706,7 +713,12 @@ macros += M 5 ===wait
 :  return true
 :end
 
-:function is_very_safe()
+:function no_monsters_present()
+:  return no_visible_monsters_present() and
+:      not is_invisible_monster_present()
+:end
+
+:function is_safe()
 :  return you.feel_safe() and not is_invisible_monster_present()
 :end
 
@@ -725,7 +737,7 @@ macros += M 5 ===wait
 # complex combat                                                           #
 ############################################################################
 
-:function flee()
+:function escape_from_invisible_monster()
 :  if you.absdepth() == 1 then
 :    if view.feature_at(0, 0) == "exit_dungeon" then
 :      return false
@@ -733,7 +745,7 @@ macros += M 5 ===wait
 :    crawl.sendkeys("X<." .. ESCAPE_KEY)
 :    return true
 :  end
-:  crawl.sendkeys("G<")
+:  crawl.sendkeys("<")
 :  return true
 :end
 
@@ -1657,14 +1669,15 @@ macros += M 5 ===wait
 :    no_reachable_target = true
 :    return
 :  end
-:  if in_last_message("explore") or in_last_message("exploring") then
+:  if text:find("explore") or text:find("exploring") then
 :    if you.depth() == cleared_depth() + 1 then
 :      c_persist.cleared_depth[you.branch()] = you.depth()
 :    end
 :    return
 :  end
-:  if text:find("know how to get there") then
-:    -- stop_running()
+:  if text:find("No target in view!") then
+:    stop_running()
+:    return
 :  end
 :end
 
@@ -1679,7 +1692,7 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  print(adjusted_threat())
+:  print(traversable(0, 0))
 :end
 
 :function debug2()
@@ -1698,8 +1711,8 @@ macros += M c ===debug
 :  end
 :end
 
-:function mini_explore()
-:  crawl.sendkeys("Xo." .. ESCAPE_KEY)
+:function attempt_mini_explore()
+:  return attempt("Xo." .. ESCAPE_KEY)
 :end
 
 :function enable_attacking()

@@ -112,9 +112,8 @@ macros += M 5 ===wait
 :local running = false
 :local no_reachable_target = false
 
-:local escaping = false
-:--local cleared_depth = {}
 :local invisible_waypoint_exists = false
+:local invisible_monster_name = nil
 :local attempt_turns = {}
 
 :function attempt(keys, index)
@@ -147,7 +146,6 @@ macros += M 5 ===wait
 :  end
 :  if in_last_message("would you want") or
 :      in_last_message("standing in a cloud") or
-:      -- in_last_message("held in a net") or
 :      in_last_message("are on fire") or
 :      in_last_message("too injured") or
 :      in_last_message("too confused") then
@@ -160,10 +158,7 @@ macros += M 5 ===wait
 :  crawl.redraw_screen()
 :  if you.turns() == 0 then
 :    c_persist.cleared_depth = {}
-:    you.train_skill("Axes", 2)
-:    you.train_skill("Armour", 1)
-:    you.train_skill("Fighting", 1)
-:    you.train_skill("Dodging", 0)
+:    c_persist.threat = {}
 :  end
 :  if no_reachable_target then
 :    local x, y = travel.waypoint_delta(1)
@@ -176,6 +171,13 @@ macros += M 5 ===wait
 :    return
 :  end
 :  run()
+:end
+
+:function train()
+:    you.train_skill("Axes", 2)
+:    you.train_skill("Armour", 1)
+:    you.train_skill("Fighting", 1)
+:    you.train_skill("Dodging", 1)
 :end
 
 :function run()
@@ -201,7 +203,7 @@ macros += M 5 ===wait
 :  if is_invisible_monster_present() then
 :    update_invisible_waypoint()
 :  else
-:    invisible_waypoint_exists = false
+:    --invisible_waypoint_exists = false
 :  end
 :  if running then
 :    crawl.more_autoclear(true)
@@ -258,7 +260,9 @@ macros += M 5 ===wait
 :function explore()
 :  if is_safe() then
 :    if you.berserk() or must_rest() then
-:      smart_rest()
+:      if not attempt("5") then
+:        stop_running()
+:      end
 :      return
 :    end
 :    if remove_curse() then
@@ -297,18 +301,6 @@ macros += M 5 ===wait
 
 :function attempt_mini_explore()
 :  return attempt("Xo." .. ESCAPE_KEY)
-:end
-
-:function smart_rest()
-:  if you.feel_safe() and not is_invisible_monster_present() then
-:    crawl.sendkeys("5")
-:    -- this doesn't work too well
-:    --if is_up_stairs(0, 0) or
-:    --    is_down_stairs(0, 0) or
-:    --    not attempt("X<." .. ESCAPE_KEY) then
-:    --  crawl.sendkeys("5")
-:    --end
-:  end
 :end
 
 :function is_up_stairs(x, y)
@@ -533,7 +525,7 @@ macros += M 5 ===wait
 :      return true
 :    end
 :    if you.status("barbed spikes") or
-:        you.caught() or
+:        --you.caught() or
 :        has_bad_transformation() then
 :      return true
 :    end
@@ -656,16 +648,24 @@ macros += M 5 ===wait
 :function threat(radius)
 :  radius = radius or 8
 :  local result = 0
+:  local invisible_threat = 0
 :  for a = -radius, radius do
 :    for b = -radius, radius do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) then
-:        result = result + calculate_threat(c)
+:      local x, y = guess_invisible()
+:      if x == a and y == b then
+:        invisible_threat = calculate_invisible_threat()
+:      else
+:        local c = monster.get_monster_at(a, b)
+:        if c and not c.is_safe(c) then
+:          result = result + calculate_threat(c)
+:        end
 :      end
 :    end
 :  end
-:  if is_invisible_monster_present() then
-:    result = result + NIGHTMARE
+:  if is_invisible_monster_present() and
+:      invisible_threat == 0 and
+:      radius == 8 then
+:    result = result + calculate_invisible_threat()
 :  end
 :  return result
 :end
@@ -682,7 +682,6 @@ macros += M 5 ===wait
 
 :function danger_percent()
 :  return math.min(adjusted_threat() * 100 / IMPOSSIBLE, 999)
-
 :end
 
 :function calculate_threat(target)
@@ -703,16 +702,26 @@ macros += M 5 ===wait
 :    -- petrification
 :    "basilisk"
 :  }
-:
-:  local result = target.threat(target)
+:  local result = target:threat()
 :  for _, name in ipairs(hard_monsters) do
-:    if target.name(target):find(name)
-:        or target.is_unique(target)
-:        or has_spell(target, "Smiting") then
-:      return 2 ^ (result + 1)
+:    if target.name(target):find(name) or
+:        target.is_unique(target) or
+:        target:is("berserk") or
+:        has_spell(target, "Smiting") then
+:        result = result + 1
+:      c_persist.threat[target:name()] = result
+:      return 2 ^ result
 :    end
 :  end
+:  c_persist.threat[target:name()] = result
 :  return 2 ^ result
+:end
+
+:function calculate_invisible_threat()
+:  if invisible_monster_name then
+:    return c_persist.threat[invisible_monster_name] or NIGHTMARE
+:  end
+:  return 0
 :end
 
 :function no_visible_monsters_present()
@@ -825,6 +834,13 @@ macros += M 5 ===wait
 :        return a, b
 :      end
 :    end
+:  end
+:end
+
+:function guess_invisible()
+:  if invisible_waypoint_exists then
+:    local x, y = travel.waypoint_delta(0)
+:    return -x, -y
 :  end
 :end
 
@@ -1723,6 +1739,11 @@ macros += M 5 ===wait
 :    end
 :    return
 :  end
+:  if text:find("Reactivating autopickup") then
+:    invisible_monster_name = nil
+:    invisible_waypoint_exists = false
+:    return
+:  end
 :  if text:find("reachable target") then
 :    crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
 :    local x, y = travel.waypoint_delta(1)
@@ -1739,6 +1760,23 @@ macros += M 5 ===wait
 :  --  stop_running()
 :  --  return
 :  --end
+:
+:  -- invisible monsters
+:  if text:find("the .* flickers and vanishes") then
+:    local _, _, match = text:find("the (.*) flickers and vanishes")
+:    invisible_monster_name = match
+:    return
+:  end
+:  if text:find(".* flickers and vanishes") then
+:    local _, _, match = text:find("(.*) flickers and vanishes")
+:    invisible_monster_name = match
+:    return
+:  end
+:  if text:find("the .* flickers out of sight") then
+:    local _, _, match = text:find("the (.*) flickers out of sight")
+:    invisible_monster_name = match
+:    return
+:  end
 :end
 
 :function choose_stat_gain()
@@ -1752,20 +1790,13 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  hit_closest_monster()
+:  local test = "the cat"
+:  print(test:find("(the )?cat"))
 :end
 
 :function debug2()
 :  for item in inventory() do
 :    print(item:ego())
 :    print(weapon_brand_level(item:ego()))
-:  end
-:end
-
-:function escape()
-:  temporarily_exclude_monsters()
-:  crawl.more()
-:  if is_up_stairs(0, 0) or not attempt("X<." .. ESCAPE_KEY) then
-:    escaping = false
 :  end
 :end

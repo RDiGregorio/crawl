@@ -690,7 +690,7 @@ macros += M 5 ===wait
 :    -- early game
 :    "worm",
 :    "gnoll",
-:    -- tanks
+:    -- large monsters
 :    "ogre",
 :    "cyclops",
 :    "giant",
@@ -790,13 +790,23 @@ macros += M 5 ===wait
 :  local target = closest_monster()
 :  if target then
 :    local x, y = target.pos(target)
-
-:print(distance(x,y))
-
-:    if distance(x, y) == 1 or
-:        traversable(clamp(x, -1, 1), clamp(y, -1, 1)) then
-:      crawl.sendkeys(to_key(clamp(x, -1, 1), clamp(y, -1, 1)))
+:    if distance(x, y) == 1 then
+:      crawl.sendkeys("*" .. to_key(x, y))
 :      return true
+:    end
+:    return move_towards(x, y)
+:  end
+:  return false
+:end
+
+:function move_towards(x, y)
+:  for a = -1, 1 do
+:    for b = -1, 1 do
+:      if cartesian_distance(x, y, a, b) < cartesian_distance(x, y)
+:          and traversable(a, b) then
+:        crawl.sendkeys(to_key(a, b))
+:        return true
+:      end
 :    end
 :  end
 :  return false
@@ -1652,8 +1662,12 @@ macros += M 5 ===wait
 :  return value
 :end
 
-:function distance(x, y)
-:  return math.max(math.abs(x), math.abs(y))
+:function distance(x0, y0, x1, y1)
+:  return math.max(math.abs(x0 - (x1 or 0)), math.abs(y0 - (y1 or 0)))
+:end
+
+:function cartesian_distance(x0, y0, x1, y1)
+:  return math.sqrt((x0 - (x1 or 0)) ^ 2 + (y0 - (y1 or 0)) ^ 2)
 :end
 
 :function control(letter)
@@ -1738,7 +1752,7 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  print(view.feature_at(0, 0) == "enter_shop")
+:  hit_closest_monster()
 :end
 
 :function debug2()

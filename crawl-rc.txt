@@ -76,7 +76,9 @@ channel.talk_visual = mute
 channel.timed_portal = mute
 channel.monster_damage = mute
 message_colour += mute:menu to convert
-message_colour += mute:waypoint 0 re-assigned
+
+message_colour += mute:Move the cursor to view the level map
+message_colour += mute:Returning to the game
 
 use_animations -= beam
 #use_animations -= beam, range, hp, monster_in_sight, pickup, monster, player, branch_entry
@@ -108,18 +110,22 @@ macros += M 5 ===wait
 :local ENTER_KEY = string.char(13)
 
 :local running = false
+:local no_reachable_target = false
+
 :local escaping = false
 :local floor_progress = {}
 :local found_up_stairs = {}
 :local invisible_waypoint_exists = false
-:local previous_turn = -1
+:local attempt_turns = {}
 :local temporary_exclusion_exists = {}
 
-:function attempt(keys)
-:  if you.turns() == previous_turn then
+:function attempt(keys, index)
+:  index = index or "default"
+:  local turns = attempt_turns[index] or -1
+:  if you.turns() == turns then
 :    return false
 :  end
-:  previous_turn = you.turns()
+:  attempt_turns[index] = you.turns()
 :  crawl.sendkeys(keys)
 :  return true
 :end
@@ -154,15 +160,20 @@ macros += M 5 ===wait
 
 :function ready()
 :  crawl.redraw_screen()
-:  --clear_temporary_exclusions()
 :  if you.turns() == 0 then
 :    you.train_skill("Axes", 2)
 :    you.train_skill("Armour", 1)
 :    you.train_skill("Fighting", 1)
 :    you.train_skill("Dodging", 0)
 :  end
-:  if escaping then
-:    escape()
+:  if no_reachable_target then
+:    local x, y = travel.waypoint_delta(1)
+:    if x == 0 and y == 0 then
+:      stop_running()
+:      return
+:    end
+:    mini_explore()
+:    no_reachable_target = false
 :    return
 :  end
 :  run()
@@ -415,10 +426,7 @@ macros += M 5 ===wait
 :    return
 :  end
 :  if you.caught() then
-:    if hit_closest_monster() then
-:      return
-:    end
-:    crawl.sendkeys(TAB_KEY)
+:    crawl.sendkeys("1")
 :    return
 :  end
 :  if is_invisible_monster_present() then
@@ -1491,7 +1499,6 @@ macros += M 5 ===wait
 
 :function compare_weapons(left, right)
 :  -- todo: handle artefacts
-:  -- todo: handle egos
 :  if left.artefact or right.artefact then
 :    return 0
 :  end
@@ -1508,7 +1515,69 @@ macros += M 5 ===wait
 :  if not left.fully_identified or not right.fully_identified then
 :    return 0
 :  end
-:  return compare(left.damage + left.plus, right.damage + right.plus)
+:  local result = compare(left.damage, right.damage)
+:  if not (result == 0) then
+:    return result
+:  end
+:  result = compare(weapon_brand_level(left:ego()),
+:      weapon_brand_level(right:ego()))
+:  if not (result == 0) then
+:    return result
+:  end
+:  return compare(left.plus, right.plus)
+:end
+
+:function weapon_brand_level(brand)
+:  local extended = false
+:  if brand == "holy wrath" then
+:    if extended then
+:      return 6
+:    end
+:    return 0
+:  end
+:  if brand == "vampirism" then
+:    if extended then
+:      return 0
+:    end
+:    return 6
+:  end
+:  if brand == "electrocution" then
+:    return 5
+:  end
+:  if brand == "draining" then
+:    if extended then
+:      return 1
+:    end
+:    return 4
+:  end
+:  if brand == "antimagic" or
+:      brand == "flaming" or
+:      brand == "freezing" then
+:    return 4
+:  end
+:  if brand == "venom" then
+:    return 3
+:  end
+:  if brand == "protection" then
+:    return 2
+:  end
+:  if brand == "vorpality" then
+:    return 1
+:  end
+:  if not brand then
+:    return 0
+:  end
+:  if brand == "chaos" then
+:    return -1
+:  end
+:  if brand == "distortion" then
+:    return -2
+:  end
+:  if brand == "pain" then
+:    return -3
+:  end
+:  -- unknown brands
+:  return -4
 :end
 
 :function compare_armour(left, right)
@@ -1636,6 +1705,18 @@ macros += M 5 ===wait
 :  end
 :end
 
+:function c_message(text, channel)
+:  if text:find("reachable target") then
+:    crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
+:    local x, y = travel.waypoint_delta(1)
+:    no_reachable_target = true
+:    return
+:  end
+:  if text:find("know how to get there") then
+:    -- stop_running()
+:  end
+:end
+
 :function choose_stat_gain()
 :  return "i"
 :end
@@ -1647,7 +1728,16 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  disable_attacking()
+:  crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
+:  local x, y = travel.waypoint_delta(1)
+:  print(tostring(x) .. ", " .. tostring(y))
+:end
+
+:function debug2()
+:  for item in inventory() do
+:    print(item:ego())
+:    print(weapon_brand_level(item:ego()))
+:  end
 :end
 
 :function disable_attacking()
@@ -1657,6 +1747,10 @@ macros += M c ===debug
 :    local inscription = "!a"
 :    crawl.sendkeys("i" .. letter .. "i" .. inscription .. ENTER_KEY)
 :  end
+:end
+
+:function mini_explore()
+:  return attempt("Xo." .. ESCAPE_KEY)
 :end
 
 :function enable_attacking()

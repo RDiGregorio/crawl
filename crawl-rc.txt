@@ -247,7 +247,8 @@ macros += M 5 ===wait
 :      you.confused() or
 :      you.status("barbed spikes") or
 :      you.status("marked") or
-:      you.corrosion() > 0
+:      you.corrosion() > 0 or
+:      has_bad_transformation()
 :end
 
 :function is_after_berserk()
@@ -410,6 +411,13 @@ macros += M 5 ===wait
 :  -- todo: allow reckless fighting in some cases
 :end
 
+:function has_bad_transformation()
+:  if you.transform() == "" then
+:    return false
+:  end
+:  return true
+:end
+
 :function tab(is_reckless)
 :  if hp_percent() <= 50 and not is_reckless then
 :    print("You are too injured to fight recklessly!")
@@ -524,7 +532,9 @@ macros += M 5 ===wait
 :    if scary_weapon_present() then
 :      return true
 :    end
-:    if you.status("barbed spikes") or you.caught() then
+:    if you.status("barbed spikes") or
+:        you.caught() or
+:        has_bad_transformation() then
 :      return true
 :    end
 :    if not is_fearless() then
@@ -677,13 +687,14 @@ macros += M 5 ===wait
 
 :function calculate_threat(target)
 :  local hard_monsters = {
-:    -- tanks
+:    -- early game
 :    "worm",
+:    "gnoll",
+:    -- tanks
 :    "ogre",
 :    "cyclops",
 :    "giant",
 :    -- packs
-:    "gnoll",
 :    "ugly thing",
 :    -- poison monsters
 :    "adder",
@@ -1660,7 +1671,11 @@ macros += M 5 ===wait
 :  if prompt:find("Keep disrobing") then
 :    return false
 :  end
+:  if prompt:find("Really walk") then
+:    return true
+:  end
 :  if prompt:find("Really attack") then
+:    stop_running()
 :    return false
 :  end
 :  if prompt:find("Really unwield") or
@@ -1674,6 +1689,11 @@ macros += M 5 ===wait
 :end
 
 :function c_message(text, channel)
+:  if text:find("There is an entrance") and
+:      view.feature_at(0, 0) == "enter_shop" then
+:    crawl.sendkeys(ESCAPE_KEY)
+:    return
+:  end
 :  if text:find("Blink to where?") then
 :    if not scroll_of_blinking_letter() then
 :      crawl.sendkeys("fy")
@@ -1701,10 +1721,10 @@ macros += M 5 ===wait
 :    end
 :    return
 :  end
-:  if text:find("No target in view!") then
-:    stop_running()
-:    return
-:  end
+:  --if text:find("No target in view!") then
+:  --  stop_running()
+:  --  return
+:  --end
 :end
 
 :function choose_stat_gain()
@@ -1718,7 +1738,7 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  print(scroll_of_blinking_letter())
+:  print(view.feature_at(0, 0) == "enter_shop")
 :end
 
 :function debug2()

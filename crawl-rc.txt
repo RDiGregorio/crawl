@@ -116,7 +116,6 @@ macros += M 5 ===wait
 :--local cleared_depth = {}
 :local invisible_waypoint_exists = false
 :local attempt_turns = {}
-:local temporary_exclusion_exists = {}
 
 :function attempt(keys, index)
 :  -- always returns true when first called
@@ -811,34 +810,6 @@ macros += M 5 ===wait
 :    travel.set_waypoint(0, x, y)
 :    invisible_waypoint_exists = true
 :  end
-:end
-
-############################################################################
-# exclusions                                                               #
-############################################################################
-
-:function clear_temporary_exclusions()
-:  if temporary_exclusion_exists[you.branch() .. you.depth()] then
-:    crawl.sendkeys("X" .. control("e") .. ESCAPE_KEY)
-:    temporary_exclusion_exists[you.branch() .. you.depth()] = false
-:  end
-:end
-
-:function temporarily_exclude_monsters()
-:  for a = -8, 8 do
-:    for b = -8, 8 do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) then
-:        local x, y = c:pos()
-:        temporarily_exclude(x, y)
-:      end
-:    end
-:  end
-:end
-
-:function temporarily_exclude(x, y)
-:  travel.set_exclude(x, y, 0)
-:  temporary_exclusion_exists[you.branch() .. you.depth()] = true
 :end
 
 ############################################################################

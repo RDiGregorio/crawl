@@ -145,8 +145,7 @@ macros += M 5 ===wait
 :  if not running then
 :    return false
 :  end
-:  if --in_last_message("know how to get there") or
-:      in_last_message("would you want") or
+:  if in_last_message("would you want") or
 :      in_last_message("standing in a cloud") or
 :      in_last_message("held in a net") or
 :      in_last_message("are on fire") or
@@ -414,7 +413,7 @@ macros += M 5 ===wait
 :      crawl.sendkeys("*" .. to_key(find_invisible(1)))
 :      return
 :    end
-:    if is_safe() then
+:    if no_visible_monsters() then
 :      if invisible_waypoint_exists then
 :        local x, y = travel.waypoint_delta(0)
 :        if x == 0 and y == 0 then
@@ -659,6 +658,9 @@ macros += M 5 ===wait
 :      end
 :    end
 :  end
+:  if is_invisible_monster_present() then
+:    result = result + NIGHTMARE
+:  end
 :  return result
 :end
 
@@ -706,7 +708,7 @@ macros += M 5 ===wait
 :  return 2 ^ result
 :end
 
-:function is_safe()
+:function no_visible_monsters()
 :  for a = -8, 8 do
 :    for b = -8, 8 do
 :      local c = monster.get_monster_at(a, b)
@@ -719,7 +721,7 @@ macros += M 5 ===wait
 :end
 
 :function is_very_safe()
-:  return is_safe() and not is_invisible_monster_present()
+:  return you.feel_safe() and not is_invisible_monster_present()
 :end
 
 :function hp_percent()

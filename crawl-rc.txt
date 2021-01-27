@@ -1088,6 +1088,14 @@ macros += M 5 ===wait
 :  end
 :end
 
+:function scroll_of_blinking_letter()
+:  for item in inventory() do
+:    if item.class(true) == "scroll" and item.subtype() == "blinking" then
+:      return items.index_to_letter(item.slot)
+:    end
+:  end
+:end
+
 :function want_to_identify_with_scroll(item)
 :  if not item.fully_identified and not item.artefact then
 :    if is_faith_equipped() and is_amulet(item) then
@@ -1666,6 +1674,21 @@ macros += M 5 ===wait
 :end
 
 :function c_message(text, channel)
+:  if text:find("Blink to where?") then
+:    if not scroll_of_blinking_letter() then
+:      crawl.sendkeys("fy")
+:    end
+:    return
+:  end
+:  if text:find("is a scroll of identify") then
+:    for item in inventory() do
+:      if want_to_identify_with_scroll(item) then
+:        crawl.sendkeys(items.index_to_letter(item.slot))
+:        return
+:      end
+:    end
+:    return
+:  end
 :  if text:find("reachable target") then
 :    crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
 :    local x, y = travel.waypoint_delta(1)
@@ -1695,6 +1718,7 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
+:  print(scroll_of_blinking_letter())
 :end
 
 :function debug2()

@@ -523,23 +523,9 @@ macros += M 5 ===wait
 :  return false
 :end
 
-:function is_easy_unique(target)
-:  local names = {
-:    "Terence",
-:    "Jessica"
-:  }
-:  for _, name in ipairs(names) do
-:    if target.name(target):find(name) then
-:      return true
-:    end
-:  end
-:  return false
-:end
-
 :function is_scary_monster(target)
-:  -- experimental: not considering all uniques scary
-:  if -- target.is_unique(target) and not is_easy_unique(target) or
-:      has_spell(target, "Symbol of Torment") or
+:  if has_spell(target, "Symbol of Torment") or
+:      has_spell(target, "Agony Range") or
 :      has_spell(target, "Flay") then
 :    return true
 :  end
@@ -665,7 +651,7 @@ macros += M 5 ===wait
 :end
 
 :function adjusted_threat(radius)
-:  local result = threat(1)
+:  local result = threat(radius)
 :  if you.slowed() or
 :      you.poisoned() or
 :      you.corrosion() > 0 then
@@ -762,7 +748,8 @@ macros += M 5 ===wait
 :      if c and not c.is_safe(c) then
 :        local d = distance(c.pos(c))
 :        local threat = calculate_threat(c)
-:        if d <= result_distance and threat > result_threat then
+:        if d < result_distance or
+:            d == result_distance and threat > result_threat then
 :          result = c
 :          result_distance = d
 :          result_threat = threat
@@ -777,6 +764,9 @@ macros += M 5 ===wait
 :  local target = closest_monster()
 :  if target then
 :    local x, y = target.pos(target)
+
+:print(distance(x,y))
+
 :    if distance(x, y) == 1 or
 :        traversable(clamp(x, -1, 1), clamp(y, -1, 1)) then
 :      crawl.sendkeys(to_key(clamp(x, -1, 1), clamp(y, -1, 1)))
@@ -1689,11 +1679,7 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  print(shafted())
-:  print(cleared_depth())
-:  --crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
-:  --local x, y = travel.waypoint_delta(1)
-:  --print(tostring(x) .. ", " .. tostring(y))
+:  print(adjusted_threat())
 :end
 
 :function debug2()

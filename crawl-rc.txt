@@ -1739,6 +1739,17 @@ macros += M 5 ===wait
 :    end
 :    return
 :  end
+:  if text:find("is a scroll of enchant weapon") then
+:    local equipped = items.equipped_at("Weapon")
+:    if equipped and not equipped.artefact then
+:      if (equipped.plus or 0) < 9 then
+:        crawl.sendkeys(items.index_to_letter(equipped.slot))
+:        return
+:      end
+:    end
+:    stop_running()
+:    return
+:  end
 :  if text:find("Reactivating autopickup") then
 :    invisible_monster_name = nil
 :    invisible_waypoint_exists = false

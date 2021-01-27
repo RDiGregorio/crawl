@@ -1512,7 +1512,7 @@ macros += M 5 ===wait
 :  local extended = false
 :  if brand == "holy wrath" then
 :    if extended then
-:      return 6
+:      return 9
 :    end
 :    return 0
 :  end
@@ -1520,29 +1520,30 @@ macros += M 5 ===wait
 :    if extended then
 :      return 0
 :    end
-:    return 6
+:    return 9
 :  end
 :  if brand == "electrocution" then
-:    return 5
+:    return 8
+:  end
+:  if brand == "flaming" then
+:    return 7
+:  end
+:  if brand == "freezing" then
+:    return 6
 :  end
 :  if brand == "draining" then
-:    if extended then
-:      return 1
-:    end
-:    return 4
-:  end
-:  if brand == "antimagic" or
-:      brand == "flaming" or
-:      brand == "freezing" then
-:    return 4
+:    return 5
 :  end
 :  if brand == "venom" then
+:    return 4
+:  end
+:  if brand == "vorpality" then
 :    return 3
 :  end
 :  if brand == "protection" then
 :    return 2
 :  end
-:  if brand == "vorpality" then
+:  if brand == "antimagic" then
 :    return 1
 :  end
 :  if not brand then

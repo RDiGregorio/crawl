@@ -113,7 +113,7 @@ macros += M 5 ===wait
 :local no_reachable_target = false
 
 :local escaping = false
-:local cleared_depth = {}
+:--local cleared_depth = {}
 :local invisible_waypoint_exists = false
 :local attempt_turns = {}
 :local temporary_exclusion_exists = {}
@@ -161,6 +161,7 @@ macros += M 5 ===wait
 :function ready()
 :  crawl.redraw_screen()
 :  if you.turns() == 0 then
+:    c_persist.cleared_depth = {}
 :    you.train_skill("Axes", 2)
 :    you.train_skill("Armour", 1)
 :    you.train_skill("Fighting", 1)
@@ -322,14 +323,13 @@ macros += M 5 ===wait
 :  return in_last_message("explore") or in_last_message("exploring")
 :end
 
-:function progress(branch)
+:function cleared_depth(branch)
 :  branch = branch or you.branch()
-:  return cleared_depth[branch] or
-:    travel.find_deepest_explored(branch) - 1
+:  return c_persist.cleared_depth[branch] or 0
 :end
 
 :function shafted()
-:  return you.depth() > progress() + 1
+:  return you.depth() > cleared_depth() + 1
 :end
 
 :function unshaft()
@@ -346,34 +346,33 @@ macros += M 5 ===wait
 
 :function safe_to_descend()
 :  return you.depth() == travel.find_deepest_explored(you.branch()) or
-:      you.depth() < progress()
+:      you.depth() < cleared_depth()
 :end
 
 :function goal()
 :  -- complete D:11
-:  if progress("D") < 11 then
+:  if cleared_depth("D") < 11 then
 :    if you.branch() == "D" then
 :      return "D" .. you.depth() + 1
 :    end
 :    return "D" .. goal_floor("D")
 :  end
 :  -- complete Lair:6
-:  if progress("Lair") < 6 then
+:  if cleared_depth("Lair") < 6 then
 :    if you.branch() == "Lair" then
 :      return "L" .. you.depth() + 1
 :    end
 :    return "L" .. goal_floor("Lair")
 :  end
 :  -- complete Orc:2
-:  -- todo: handle disconnected rooms
-:  if progress("Orc") < 2 then
+:  if cleared_depth("Orc") < 2 then
 :    if you.branch() == "Orc" then
 :      return "O" .. you.depth() + 1
 :    end
 :    return "O" .. goal_floor("Orc")
 :  end
 :  -- complete Dungeon:15
-:  if progress("D") < 15 then
+:  if cleared_depth("D") < 15 then
 :    if you.branch() == "D" then
 :      return "D" .. you.depth() + 1
 :    end
@@ -1695,8 +1694,8 @@ macros += M 5 ===wait
 :    return
 :  end
 :  if in_last_message("explore") or in_last_message("exploring") then
-:    if you.depth() == progress() + 1 then
-:      cleared_depth[you.branch()] = you.depth()
+:    if you.depth() == cleared_depth() + 1 then
+:      c_persist.cleared_depth[you.branch()] = you.depth()
 :    end
 :    return
 :  end
@@ -1717,7 +1716,7 @@ macros += M c ===debug
 
 :function debug()
 :  print(shafted())
-:  print(progress())
+:  print(cleared_depth())
 :  --crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
 :  --local x, y = travel.waypoint_delta(1)
 :  --print(tostring(x) .. ", " .. tostring(y))

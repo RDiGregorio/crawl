@@ -5,6 +5,7 @@
 # handle oklob plant
 # handle shops
 # write a best_armour_to_enchant function, handle reading enchant scrolls
+# script wand usage on eels, some blinkers
 
 ############################################################################
 # options                                                                  #
@@ -720,7 +721,7 @@ macros += M 5 ===wait
 :end
 
 :function calculate_invisible_threat()
-:  if invisible_monster_name then
+:  if is_invisible_monster_present() then
 :    return c_persist.threat[invisible_monster_name] or NIGHTMARE
 :  end
 :  return 0
@@ -759,8 +760,11 @@ macros += M 5 ===wait
 :end
 
 :function escape_from_invisible_monster()
-:  if you.absdepth() == 1 and view.feature_at(0, 0) == "exit_dungeon" then
+:  if view.feature_at(0, 0) == "exit_dungeon" then
 :    return false
+:  end
+:  if is_up_stairs(0, 0) then
+:    return attempt("<")
 :  end
 :  return attempt("X<." .. ESCAPE_KEY)
 :end
@@ -810,18 +814,6 @@ macros += M 5 ===wait
 :      if cartesian_distance(x, y, a, b) < cartesian_distance(x, y)
 :          and traversable(a, b) then
 :        return attempt(to_key(a, b), "approach")
-:      end
-:    end
-:  end
-:  return false
-:end
-
-:function retreat(x, y)
-:  for a = -1, 1 do
-:    for b = -1, 1 do
-:      if cartesian_distance(x, y, a, b) > cartesian_distance(x, y)
-:          and traversable(a, b) then
-:        return attempt(to_key(a, b), "retreat")
 :      end
 :    end
 :  end
@@ -1057,7 +1049,6 @@ macros += M 5 ===wait
 :      item.class(true) == "scroll" then
 :    return false
 :  end
-
 :  for other in inventory() do
 :    if not (item.slot == other.slot) and
 :        other:name() == item:name() and
@@ -1966,7 +1957,5 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  for item in inventory() do
-:    print(item.class(true) == "missile")
-:  end
+:    print(adjusted_threat())
 :end

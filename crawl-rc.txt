@@ -145,7 +145,9 @@ macros += M 5 ===wait
 :  crawl.redraw_screen()
 :  if you.turns() == 0 then
 :    c_persist.cleared_depth = {}
+:    c_persist.escape_plans = {}
 :    c_persist.threat = {}
+:    train()
 :  end
 :  if no_reachable_target then
 :    if not attempt_mini_explore() and not attempt_mini_escape() then
@@ -282,13 +284,6 @@ macros += M 5 ===wait
 :  return attempt("Xo." .. ESCAPE_KEY, "explore")
 :end
 
-:function attempt_mini_escape()
-:  if is_up_stairs(0, 0) then
-:    return attempt("<", "escape")
-:  end
-:  return attempt("X<." .. ESCAPE_KEY, "escape")
-:end
-
 :function is_up_stairs(x, y)
 :  local feature = view.feature_at(x, y)
 :  if feature then
@@ -413,7 +408,7 @@ macros += M 5 ===wait
 :        local x, y = travel.waypoint_delta(0)
 :        if x == 0 and y == 0 then
 :          invisible_waypoint_exists = false
-:          if not escape_from_invisible_monster() then
+:          if not attempt_mini_escape() then
 :            stop_running()
 :          end
 :          return
@@ -425,7 +420,7 @@ macros += M 5 ===wait
 :          invisible_waypoint_exists = false
 :        end
 :      end
-:      if not escape_from_invisible_monster() then
+:      if not attempt_mini_escape() then
 :        stop_running()
 :      end
 :      return
@@ -473,6 +468,7 @@ macros += M 5 ===wait
 :end
 
 :function count_monsters(f)
+:  -- this is unused
 :  local result = 0
 :  for a = -8, 8 do
 :    for b = -8, 8 do
@@ -736,16 +732,6 @@ macros += M 5 ===wait
 :  return 100 * a / b
 :end
 
-:function escape_from_invisible_monster()
-:  if view.feature_at(0, 0) == "exit_dungeon" then
-:    return false
-:  end
-:  if is_up_stairs(0, 0) then
-:    return attempt("<")
-:  end
-:  return attempt_mini_escape()
-:end
-
 :function closest_monster(radius)
 :  radius = radius or 8
 :  local result = nil
@@ -866,6 +852,110 @@ macros += M 5 ===wait
 :    end)
 :    return adjacent[1].x, adjacent[1].y
 :  end
+:end
+
+############################################################################
+# escaping                                                                 #
+############################################################################
+
+:function attempt_mini_escape()
+:  -- does not avoid bumping into monsters
+:  if view.feature_at(0, 0) == "exit_dungeon" then
+:    return false
+:  end
+:  if is_up_stairs(0, 0) then
+:    return attempt("<", "escape")
+:  end
+:  return attempt("X<." .. ESCAPE_KEY, "escape")
+:end
+
+:function escape()
+:  local plan = escape_plan()
+:  print("MODE: " .. plan.mode)
+:  if plan.mode == 0 then
+:    exclude_monsters()
+:    plan.mode = plan.mode + 1
+:    return true
+:  end
+:  if plan.mode == 1 then
+:    if is_up_stairs(0, 0) then
+:      clear_exclusions()
+:      plan.mode = plan.mode + 1
+:      return true
+:    end
+:    plan.mode = plan.mode + 1
+:  end
+:  if plan.mode == 2 then
+:    plan.turns = you.turns()
+:    local cells = all_adjacent_up_stairs()
+:    if table.getn(cells) == 0 then
+:      attempt_mini_escape()
+:    else
+:      local cell = any_traversable(cells)
+:      if cell then
+:        crawl.sendkeys(to_key(cell.x, cell.y))
+:      end
+:    end
+:    plan.mode = plan.mode + 1
+:    return true
+:  end
+:  if plan.mode == 3 then
+:    clear_exclusions()
+:    if plan.turns == you.turns() then
+:      print("FAILED TO MOVE")
+:      return false
+:    end
+:    plan.mode = 0
+:    return true
+:  end
+:end
+
+:function escape_plan()
+:  local key = you.branch() .. you.depth()
+:  if not c_persist.escape_plans[key] then
+:    c_persist.escape_plans[key] = {
+:      branch = you.branch(),
+:      depth = you.depth(),
+:      turns = you.turns(),
+:      mode = 0
+:    }
+:  end
+:  return c_persist.escape_plans[key]
+:end
+
+:function exclude_monsters()
+:  for a = -8, 8 do
+:    for b = -8, 8 do
+:      local c = monster.get_monster_at(a, b)
+:      if c then
+:        travel.set_exclude(c:x_pos(), c:y_pos(), 0)
+:      end
+:    end
+:  end
+:end
+
+:function clear_exclusions()
+:  crawl.sendkeys("X" .. control("e") .. ESCAPE_KEY)
+:end
+
+:function any_traversable(cells)
+:  for _, cell in ipairs(cells) do
+:    if traversable(cell.x, cell.y) then
+:      return cell
+:    end
+:  end
+:end
+
+:function all_adjacent_up_stairs()
+:  local adjacent = {}
+:  for a = -1, 1 do
+:    for b = -1, 1 do
+:      if not (a == 0 and b == 0) and is_up_stairs(a, b) then
+:        adjacent[table.getn(adjacent) + 1] = point(a, b)
+:      end
+:    end
+:  end
+:  return adjacent
 :end
 
 ############################################################################
@@ -1975,7 +2065,8 @@ macros += M 5 ===wait
 ############################################################################
 
 macros += M c ===debug
+macros += M 0 ===escape
 
 :function debug()
-:  print(you.piety_rank())
+:  escape()
 :end

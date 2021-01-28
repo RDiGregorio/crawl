@@ -1,10 +1,8 @@
 # DCSS 0.26
 
-# can delete waypoints with ctrl+W
 # use the c_message hook instead of searching last message!
 # handle oklob plant
 # handle shops
-# write a best_armour_to_enchant function, handle reading enchant scrolls
 # script wand usage on eels, some blinkers
 # script special tactics for certain monsters
 
@@ -1102,14 +1100,29 @@ macros += M 5 ===wait
 :end
 
 :function best_armour_to_enchant()
+:  -- todo: handle shields
+:  -- todo: handle body armours
 :  local boots = items.equipped_at("Boots")
+:  if (boots.plus or 0) < 2 and not boots.artefact then
+:    return boots
+:  end
 :  local gloves = items.equipped_at("Gloves")
+:  if (gloves.plus or 0) < 2 and not gloves.artefact then
+:    return gloves
+:  end
 :  local helmet = items.equipped_at("Helmet")
+:  if (helmet.plus or 0) < 2 and not helmet.artefact then
+:    return helmet
+:  end
 :  local cloak = items.equipped_at("Cloak")
-:
-:
-:
-:
+:  if (cloak.plus or 0) < 2 and not cloak.artefact then
+:    return cloak
+:  end
+:  local body = items.equipped_at("Armour")
+:  if (body.plus or 0) < 2 and not body.artefact then
+:    return body
+:  end
+:  -- local shield = items.equipped_at("Shield")
 :end
 
 :function want_book(item)
@@ -1929,7 +1942,13 @@ macros += M 5 ===wait
 :        return
 :      end
 :    end
-:    stop_running()
+:    return
+:  end
+:  if text:find("is a scroll of enchant armour") then
+:    local equipped = best_armour_to_enchant()
+:    if equipped then
+:      crawl.sendkeys(items.index_to_letter(equipped.slot))
+:    end
 :    return
 :  end
 :  if text:find("Reactivating autopickup") then

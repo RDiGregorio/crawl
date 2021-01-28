@@ -36,7 +36,6 @@ travel_one_unsafe_move = true
 
 force_more_message += you miscast
 force_more_message += know that spell
-force_more_message += calcifying dust hits you
 force_more_message += unable to access your magic
 force_more_message += too confused to cast spells
 force_more_message += wracked with pain
@@ -419,6 +418,10 @@ macros += M 5 ===wait
 :    crawl.sendkeys("b")
 :    return
 :  end
+:  if not avoid_dangerous_clouds() then
+:    stop_running()
+:    return
+:  end
 :  if is_invisible_monster_present() then
 :    if find_invisible(1) then
 :      crawl.sendkeys("*" .. to_key(find_invisible(1)))
@@ -466,9 +469,6 @@ macros += M 5 ===wait
 :      or berserk_disabled()
 :      or is_berserk_bad() then
 :    return false
-:  end
-:  if find_invisible(1) then
-:    return true
 :  end
 :  return is_angry()
 :end
@@ -550,7 +550,7 @@ macros += M 5 ===wait
 :    -- paralysis
 :    "floating eye",
 :    "dream sheep",
-:    "catoblepas",
+:    --"catoblepas",
 :    -- torment
 :    "lurking horror",
 :    -- misc
@@ -756,20 +756,11 @@ macros += M 5 ===wait
 :  return 100 * a / b
 :end
 
-############################################################################
-# complex combat                                                           #
-############################################################################
-
 :function escape_from_invisible_monster()
-:  if you.absdepth() == 1 then
-:    if view.feature_at(0, 0) == "exit_dungeon" then
-:      return false
-:    end
-:    crawl.sendkeys("X<." .. ESCAPE_KEY)
-:    return true
+:  if you.absdepth() == 1 and view.feature_at(0, 0) == "exit_dungeon" then
+:    return false
 :  end
-:  crawl.sendkeys("<")
-:  return true
+:  return attempt("X<." .. ESCAPE_KEY)
 :end
 
 :function closest_monster(radius)
@@ -803,18 +794,20 @@ macros += M 5 ===wait
 :      crawl.sendkeys("*" .. to_key(x, y))
 :      return true
 :    end
-:    return move_towards(x, y)
+:    return approach(x, y)
 :  end
 :  return false
 :end
 
-:function move_towards(x, y)
+:function approach(x, y)
+:  if distance(x, y) == 1 and not traversable(x, y) then
+:    return false
+:  end
 :  for a = -1, 1 do
 :    for b = -1, 1 do
 :      if cartesian_distance(x, y, a, b) < cartesian_distance(x, y)
 :          and traversable(a, b) then
-:        crawl.sendkeys(to_key(a, b))
-:        return true
+:        return attempt(to_key(a, b), "approach")
 :      end
 :    end
 :  end
@@ -823,7 +816,8 @@ macros += M 5 ===wait
 
 :function traversable(x, y)
 :  return travel.feature_traversable(view.feature_at(x, y)) and
-:      not monster.get_monster_at(x, y)
+:      not monster.get_monster_at(x, y) and
+:      not (view.cloud_at(x, y) == "calcifying dust")
 :end
 
 :function find_invisible(radius)
@@ -853,6 +847,37 @@ macros += M 5 ===wait
 :  if x and y then
 :    travel.set_waypoint(0, x, y)
 :    invisible_waypoint_exists = true
+:  end
+:end
+
+############################################################################
+# complex combat                                                           #
+############################################################################
+
+:function avoid_dangerous_clouds()
+:  local cloud = view.cloud_at(0, 0)
+:  if cloud == "calcifying dust" then
+:    local target = find_monster("catoblepas") or closest_monster()
+:    return target and approach(closest_adjacent_traversable(target:pos()))
+:  end
+:  return true
+:end
+
+:function closest_adjacent_traversable(x, y)
+:  local adjacent = {}
+:  for a = -1, 1 do
+:    for b = -1, 1 do
+:      if not (a == 0 and b == 0) and traversable(a, b) then
+:        adjacent[table.getn(adjacent) + 1] = point(a, b)
+:      end
+:    end
+:  end
+:  if table.getn(adjacent) > 0 then
+:    function compare(a, b)
+:      return distance(a.x, a.y, x, y) < distance(b.x, b.y, x, y)
+:    end
+:    table.sort(adjacent, compare)
+:    return adjacent[1].x, adjacent[1].y
 :  end
 :end
 
@@ -1690,6 +1715,10 @@ macros += M 5 ===wait
 :  return string.char(string.byte(letter) - string.byte("a") + 1)
 :end
 
+:function point(a, b)
+:  return {x = a, y = b}
+:end
+
 ############################################################################
 # hooks                                                                    #
 ############################################################################
@@ -1767,11 +1796,6 @@ macros += M 5 ===wait
 :    end
 :    return
 :  end
-:  --if text:find("No target in view!") then
-:  --  stop_running()
-:  --  return
-:  --end
-:
 :  -- invisible monsters
 :  if text:find("the .* flickers and vanishes") then
 :    local _, _, match = text:find("the (.*) flickers and vanishes")
@@ -1801,8 +1825,6 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:  local test = "the cat"
-:  print(test:find("(the )?cat"))
 :end
 
 :function debug2()

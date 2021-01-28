@@ -70,6 +70,7 @@ autopickup_exceptions += <phantom mirror, <throwing net
 auto_exclude = oklob plant, Roxanne, orange crystal statue, diamond obelisk
 
 channel.intrinsic_gain = mute
+channel.god = mute
 channel.multiturn = mute
 channel.talk = mute
 channel.talk_visual = mute
@@ -160,12 +161,9 @@ macros += M 5 ===wait
 :    c_persist.threat = {}
 :  end
 :  if no_reachable_target then
-:    local x, y = travel.waypoint_delta(1)
-:    if x == 0 and y == 0 then
+:    if not attempt_mini_explore() and not attempt_mini_escape() then
 :      stop_running()
-:      return
 :    end
-:    attempt_mini_explore()
 :    no_reachable_target = false
 :    return
 :  end
@@ -179,7 +177,7 @@ macros += M 5 ===wait
 :    you.train_skill("Dodging", 1)
 :end
 
-:function run()
+:function run(stepping)
 :  if must_stop_running() then
 :    stop_running()
 :  end
@@ -204,7 +202,7 @@ macros += M 5 ===wait
 :  else
 :    --invisible_waypoint_exists = false
 :  end
-:  if running then
+:  if running or stepping then
 :    crawl.more_autoclear(true)
 :    if is_safe() then
 :      explore()
@@ -228,11 +226,7 @@ macros += M 5 ===wait
 :end
 
 :function step()
-:  if not running then
-:    start_running()
-:    run()
-:    stop_running()
-:  end
+:  run(true)
 :end
 
 ############################################################################
@@ -299,7 +293,14 @@ macros += M 5 ===wait
 :end
 
 :function attempt_mini_explore()
-:  return attempt("Xo." .. ESCAPE_KEY)
+:  return attempt("Xo." .. ESCAPE_KEY, "explore")
+:end
+
+:function attempt_mini_escape()
+:  if is_up_stairs(0, 0) then
+:    return attempt("<", "escape")
+:  end
+:  return attempt("X<." .. ESCAPE_KEY, "escape")
 :end
 
 :function is_up_stairs(x, y)
@@ -334,11 +335,7 @@ macros += M 5 ===wait
 :end
 
 :function unshaft()
-:  if is_up_stairs(0, 0) then
-:    crawl.sendkeys("<")
-:    return
-:  end
-:  if not attempt("X<." .. ESCAPE_KEY, "unshaft") then
+:  if not attempt_mini_escape() then
 :    if not attempt("o") then
 :      stop_running()
 :    end
@@ -764,7 +761,7 @@ macros += M 5 ===wait
 :  if is_up_stairs(0, 0) then
 :    return attempt("<")
 :  end
-:  return attempt("X<." .. ESCAPE_KEY)
+:  return attempt_mini_escape()
 :end
 
 :function closest_monster(radius)
@@ -1064,7 +1061,7 @@ macros += M 5 ===wait
 :end
 
 :function want_weapon(item)
-:  if item.subtype() == "hand axe" then
+:  if item.subtype() == "hand axe" and not item.fully_identified then
 :    -- avoids early cursed hand axes
 :    return false
 :  end
@@ -1103,23 +1100,25 @@ macros += M 5 ===wait
 :  -- todo: handle shields
 :  -- todo: handle body armours
 :  local boots = items.equipped_at("Boots")
-:  if (boots.plus or 0) < 2 and not boots.artefact then
+:  if boots and (boots.plus or 0) < 2 and not boots.artefact then
 :    return boots
 :  end
 :  local gloves = items.equipped_at("Gloves")
-:  if (gloves.plus or 0) < 2 and not gloves.artefact then
+:  if gloves and (gloves.plus or 0) < 2 and not gloves.artefact then
 :    return gloves
 :  end
 :  local helmet = items.equipped_at("Helmet")
-:  if (helmet.plus or 0) < 2 and not helmet.artefact then
+:  if helmet and (helmet.plus or 0) < 2 and not helmet.artefact then
 :    return helmet
 :  end
 :  local cloak = items.equipped_at("Cloak")
-:  if cloak.ac > 0 and (cloak.plus or 0) < 2 and not cloak.artefact then
+:  if cloak and cloak.ac > 0
+:      and (cloak.plus or 0) < 2 and
+:      not cloak.artefact then
 :    return cloak
 :  end
 :  local body = items.equipped_at("Armour")
-:  if (body.plus or 0) < 2 and not body.artefact then
+:  if body and (body.plus or 0) < 2 and not body.artefact then
 :    return body
 :  end
 :  -- local shield = items.equipped_at("Shield")
@@ -1957,8 +1956,6 @@ macros += M 5 ===wait
 :    return
 :  end
 :  if text:find("reachable target") then
-:    crawl.sendkeys("Xo" .. control("w") .. "1" .. ESCAPE_KEY)
-:    local x, y = travel.waypoint_delta(1)
 :    no_reachable_target = true
 :    return
 :  end

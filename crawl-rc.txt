@@ -1748,6 +1748,10 @@ macros += M 5 ===wait
 :end
 
 :function c_message(text, channel)
+:  if channel == "error" then
+:    stop_running()
+:    return
+:  end
 :  if text:find("There is an entrance") and
 :      view.feature_at(0, 0) == "enter_shop" then
 :    crawl.sendkeys(ESCAPE_KEY)

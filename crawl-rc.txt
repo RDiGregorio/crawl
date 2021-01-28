@@ -1,12 +1,10 @@
 # DCSS 0.26
 
-# todo: bind . to prompt for waiting a turn?
-# use adjacent enemies to calculate berserk
-# use the jewellery_prompt option?
 # can delete waypoints with ctrl+W
 # use the c_message hook instead of searching last message!
-
 # handle oklob plant
+# handle shops
+# write a best_armour_to_enchant function, handle reading enchant scrolls
 
 ############################################################################
 # options                                                                  #
@@ -66,7 +64,10 @@ explore_stop += greedy_pickup
 
 #autopickup_exceptions += brilliance, holy word, silence
 #autopickup_exceptions += polymorph, random effects
+
 autopickup_exceptions += <phantom mirror, <throwing net
+
+auto_exclude = oklob plant, Roxanne, orange crystal statue, diamond obelisk
 
 channel.intrinsic_gain = mute
 channel.multiturn = mute
@@ -492,12 +493,12 @@ macros += M 5 ===wait
 :  end
 :end
 
-:function count_monsters()
+:function count_monsters(f)
 :  local result = 0
 :  for a = -8, 8 do
 :    for b = -8, 8 do
 :      local c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) then
+:      if c and f(c) then
 :        result = result + 1
 :      end
 :    end
@@ -815,6 +816,18 @@ macros += M 5 ===wait
 :  return false
 :end
 
+:function retreat(x, y)
+:  for a = -1, 1 do
+:    for b = -1, 1 do
+:      if cartesian_distance(x, y, a, b) > cartesian_distance(x, y)
+:          and traversable(a, b) then
+:        return attempt(to_key(a, b), "retreat")
+:      end
+:    end
+:  end
+:  return false
+:end
+
 :function traversable(x, y)
 :  return travel.feature_traversable(view.feature_at(x, y)) and
 :      not monster.get_monster_at(x, y) and
@@ -1038,9 +1051,13 @@ macros += M 5 ===wait
 ############################################################################
 
 :function is_unneeded_duplicate(item)
-:  if item.artefact then
+:  if item.artefact or
+:      item.class(true) == "missile" or
+:      item.class(true) == "potion" or
+:      item.class(true) == "scroll" then
 :    return false
 :  end
+
 :  for other in inventory() do
 :    if not (item.slot == other.slot) and
 :        other:name() == item:name() and
@@ -1479,10 +1496,11 @@ macros += M 5 ===wait
 :  if item:name():find("pearl dragon scales") then
 :    return 1
 :  end
-:  if item:name():find("ice dragon scales") then
+:  -- fire and ice scales are dangerous
+:  if item:name():find("fire dragon scales") then
 :    return -1
 :  end
-:  if item:name():find("fire dragon scales") then
+:  if item:name():find("ice dragon scales") then
 :    return -1
 :  end
 :  -- don't care about other types
@@ -1949,6 +1967,6 @@ macros += M c ===debug
 
 :function debug()
 :  for item in inventory() do
-:    print(item:name():find("fire dragon scales"))
+:    print(item.class(true) == "missile")
 :  end
 :end

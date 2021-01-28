@@ -1115,7 +1115,7 @@ macros += M 5 ===wait
 :    return helmet
 :  end
 :  local cloak = items.equipped_at("Cloak")
-:  if (cloak.plus or 0) < 2 and not cloak.artefact then
+:  if cloak.ac > 0 and (cloak.plus or 0) < 2 and not cloak.artefact then
 :    return cloak
 :  end
 :  local body = items.equipped_at("Armour")

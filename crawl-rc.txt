@@ -273,7 +273,7 @@ macros += M 5 ===wait
 :    if upgrade_equipment() then
 :      return
 :    end
-:    if remove_dangerous() then
+:    if remove_dangerous_rings() then
 :      return
 :    end
 :    if drop_junk() then
@@ -939,13 +939,13 @@ macros += M 5 ===wait
 :end
 
 :function is_junk_armour(item)
-:  if item.subtype() == "body" then
-:    local equipped = items.equipped_at("Armour")
-:    if equipped and is_scales(equipped) and not is_scales(item) then
-:      return true
-:    end
+:  if is_scales(item) then
+:    return false
 :  end
-:  if item.class(true) == "armour" and not item.branded then
+:  if item:ego() == "harm" then
+:    return true
+:  end
+:  if item.class(true) == "armour" then
 :    for other in inventory() do
 :      if compare_armour(item, other) < 0 then
 :        return true
@@ -987,6 +987,10 @@ macros += M 5 ===wait
 :    return item.subtype() == "ring of fire" or
 :        item.subtype() == "ring of ice"
 :  end
+:  if is_scales(item) then
+:    return item:name():find("fire dragon scales") or
+:        item:name():find("ice dragon scales")
+:  end
 :  return false
 :end
 
@@ -1004,9 +1008,6 @@ macros += M 5 ===wait
 :  if burdened() and can_drop_if_burdened(item) then
 :    return true
 :  end
-:  local junk_egos = {
-:    "harm"
-:  }
 :  local junk_subtypes = {
 :    "attraction",
 :    "degeneration",
@@ -1020,11 +1021,6 @@ macros += M 5 ===wait
 :    "torment",
 :    "vulnerability"
 :  }
-:  for _, ego in ipairs(junk_egos) do
-:    if item.ego(true) == ego then 
-:      return true
-:    end
-:  end
 :  for _, subtype in ipairs(junk_subtypes) do
 :    if item.subtype() == subtype then 
 :      return true
@@ -1041,12 +1037,12 @@ macros += M 5 ===wait
 :  if item.artefact then
 :    return false
 :  end
-:  if item.subtype() == "phantom mirror" then
-:    for other in inventory() do
-:      if other.subtype() == item.subtype() and
-:          not (item.slot == other.slot) then
-:        return true
-:      end
+:  for other in inventory() do
+:    if not (item.slot == other.slot) and
+:        other:name() == item:name() and
+:        item:ego() == other:ego() and
+:        (item.plus or 0) == (other.plus or 0) then
+:      return true
 :    end
 :  end
 :  return false
@@ -1070,8 +1066,10 @@ macros += M 5 ===wait
 :end
 
 :function want_armour(item)
-:  if item.class(true) == "armour" and
-:      not is_scales(item) then
+:  if is_scales(item) then
+:    return true
+:  end
+:  if item.class(true) == "armour" then
 :    local best = best_ac(item.subtype())
 :    if item.ac > best then
 :      return true
@@ -1400,16 +1398,16 @@ macros += M 5 ===wait
 
 :function cloak_level(item)
 :  if item:ego() == "resistance" then
-:    return 8
+:    return 5
 :  end
 :  if item:ego() == "poison resistance" then
-:    return 7
+:    return 4
 :  end
 :  if item:ego() == "preservation" then
-:    return 6
+:    return 4
 :  end
 :  if item:ego() == "fire resistance" then
-:    return 5
+:    return 4
 :  end
 :  if item:ego() == "cold resistance" then
 :    return 4
@@ -1461,6 +1459,29 @@ macros += M 5 ===wait
 :    return 0
 :  end
 :  -- don't care about other brands
+:  return 0
+:end
+
+:function body_level(item)
+:  if item:name():find("gold dragon scales") then
+:    return 1
+:  end
+:  if item:name():find("storm dragon scales") then
+:    return 1
+:  end
+:  if item:name():find("shadow dragon scales") then
+:    return 1
+:  end
+:  if item:name():find("pearl dragon scales") then
+:    return 1
+:  end
+:  if item:name():find("ice dragon scales") then
+:    return -1
+:  end
+:  if item:name():find("fire dragon scales") then
+:    return -1
+:  end
+:  -- don't care about other types
 :  return 0
 :end
 
@@ -1591,9 +1612,12 @@ macros += M 5 ===wait
 :  return false
 :end
 
-:function remove_dangerous()
+:function remove_dangerous_rings()
 :  for item in inventory() do
-:    if item.equipped and not item.cursed and is_dangerous(item) then
+:    if item.equipped and
+:        not item.cursed and
+:        is_ring(item) and
+:        is_dangerous(item) then
 :      if item.remove() then
 :        return true
 :      end
@@ -1692,7 +1716,6 @@ macros += M 5 ===wait
 
 :function compare_armour(left, right)
 :  -- todo: handle artefacts
-:  -- todo: handle egos
 :  if left.artefact or right.artefact then
 :    return 0
 :  end
@@ -1709,25 +1732,20 @@ macros += M 5 ===wait
 :  if not left.fully_identified or not right.fully_identified then
 :    return 0
 :  end
-:  if is_scales(left) or is_scales(right) then
-:    return 0
-:  end
+:  result = 0
 :  if left.subtype() == "body" then
-:    -- todo: handle scales
-:  else
-:    result = 0
-:    if left.subtype() == "helmet" then
-:      result = compare(helmet_level(left), helmet_level(right))
-:    elseif left.subtype() == "cloak" then
-:      result = compare(cloak_level(left), cloak_level(right))
-:    elseif left.subtype() == "gloves" then
-:      result = compare(boots_level(left), boots_level(right))
-:    elseif left.subtype() == "boots" then
-:      result = compare(gloves_level(left), gloves_level(right))
-:    end
-:    if not (result == 0) then
-:      return result
-:    end
+:    result = compare(body_level(left), body_level(right))
+:  elseif left.subtype() == "helmet" then
+:    result = compare(helmet_level(left), helmet_level(right))
+:  elseif left.subtype() == "cloak" then
+:    result = compare(cloak_level(left), cloak_level(right))
+:  elseif left.subtype() == "gloves" then
+:    result = compare(boots_level(left), boots_level(right))
+:  elseif left.subtype() == "boots" then
+:    result = compare(gloves_level(left), gloves_level(right))
+:  end
+:  if not (result == 0) then
+:    return result
 :  end
 :  return compare(left.ac + (left.plus or 0), right.ac + (right.plus or 0))
 :end
@@ -1927,6 +1945,6 @@ macros += M c ===debug
 
 :function debug()
 :  for item in inventory() do
-:    print(gloves_level(item))
+:    print(item:name():find("fire dragon scales"))
 :  end
 :end

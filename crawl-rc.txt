@@ -970,7 +970,7 @@ macros += M 5 ===wait
 :    if item.subtype() == "amulet of inaccuracy" then
 :      return true
 :    end
-:    if item.subtype() == "amulet of faith" and is_faith_bound() then
+:    if item.equipped and is_faith_bound() then
 :      return false
 :    end
 :    for other in inventory() do

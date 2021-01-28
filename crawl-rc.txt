@@ -1004,7 +1004,6 @@ macros += M 5 ===wait
 :  if burdened() and can_drop_if_burdened(item) then
 :    return true
 :  end
-:  -- todo: add an is_junk_cloak
 :  local junk_egos = {
 :    "harm"
 :  }
@@ -1384,6 +1383,87 @@ macros += M 5 ===wait
 :  return 0
 :end
 
+:function helmet_level(item)
+:  if item:ego() == "see invisible" then
+:    return 2
+:  end
+:  if item:ego() == "willpower" then
+:    return 1
+:  end
+:  -- don't care about intelligence
+:  if item:ego() == "intelligence" then
+:    return 0
+:  end
+:  -- don't care about other brands
+:  return 0
+:end
+
+:function cloak_level(item)
+:  if item:ego() == "resistance" then
+:    return 8
+:  end
+:  if item:ego() == "poison resistance" then
+:    return 7
+:  end
+:  if item:ego() == "preservation" then
+:    return 6
+:  end
+:  if item:ego() == "fire resistance" then
+:    return 5
+:  end
+:  if item:ego() == "cold resistance" then
+:    return 4
+:  end
+:  if item:ego() == "repulsion" then
+:    return 3
+:  end
+:  if item:ego() == "willpower" then
+:    return 2
+:  end
+:  if item:ego() == "stealth" then
+:    return 1
+:  end
+:  -- don't care about invisibility
+:  if item:ego() == "invisibility" then
+:    return 0
+:  end
+:  -- harm is junk
+:  if item:ego() == "harm" then
+:    return -1
+:  end
+:  -- don't care about other brands
+:  return 0
+:end
+
+:function boots_level(item)
+:  if item:ego() == "running" then
+:    return 3
+:  end
+:  if item:ego() == "flying" then
+:    return 2
+:  end
+:  if item:ego() == "stealth" then
+:    return 1
+:  end
+:  -- don't care about other brands
+:  return 0
+:end
+
+:function gloves_level(item)
+:  if item:ego() == "strength" then
+:    return 2
+:  end
+:  if item:ego() == "dexterity" then
+:    return 1
+:  end
+:  -- don't care about archery
+:  if item:ego() == "archery" then
+:    return 0
+:  end
+:  -- don't care about other brands
+:  return 0
+:end
+
 :function is_faith_equipped()
 :  local amulet = items.equipped_at("Amulet")
 :  return amulet and amulet.subtype() == "amulet of faith"
@@ -1553,7 +1633,7 @@ macros += M 5 ===wait
 :  if not (result == 0) then
 :    return result
 :  end
-:  return compare(left.plus, right.plus)
+:  return compare(left.plus or 0, right.plus or 0)
 :end
 
 :function weapon_brand_level(brand)
@@ -1632,7 +1712,24 @@ macros += M 5 ===wait
 :  if is_scales(left) or is_scales(right) then
 :    return 0
 :  end
-:  return compare(left.ac + left.plus, right.ac + right.plus)
+:  if left.subtype() == "body" then
+:    -- todo: handle scales
+:  else
+:    result = 0
+:    if left.subtype() == "helmet" then
+:      result = compare(helmet_level(left), helmet_level(right))
+:    elseif left.subtype() == "cloak" then
+:      result = compare(cloak_level(left), cloak_level(right))
+:    elseif left.subtype() == "gloves" then
+:      result = compare(boots_level(left), boots_level(right))
+:    elseif left.subtype() == "boots" then
+:      result = compare(gloves_level(left), gloves_level(right))
+:    end
+:    if not (result == 0) then
+:      return result
+:    end
+:  end
+:  return compare(left.ac + (left.plus or 0), right.ac + (right.plus or 0))
 :end
 
 :function best_damage(weap_skill)
@@ -1829,11 +1926,7 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:end
-
-:function debug2()
 :  for item in inventory() do
-:    print(item:ego())
-:    print(weapon_brand_level(item:ego()))
+:    print(gloves_level(item))
 :  end
 :end

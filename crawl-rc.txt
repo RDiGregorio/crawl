@@ -156,8 +156,14 @@ macros += M 5 ===wait
 :end
 
 :function housekeeping()
-:  if is_escaping() and (is_up_stairs(0, 0) or is_down_stairs(0, 0)) then
-:    stop_escaping()
+:  if is_escaping() then
+:    if is_up_stairs(0, 0) or is_down_stairs(0, 0) then
+:      stop_escaping()
+:      return false
+:    end
+:    if not (escape_plan().mode == 0) then
+:      escape()
+:    end
 :    return false
 :  end
 :  if no_reachable_target then
@@ -166,20 +172,6 @@ macros += M 5 ===wait
 :    end
 :    no_reachable_target = false
 :    return false
-:  end
-:  return true
-:end
-
-:function train()
-:    you.train_skill("Axes", 2)
-:    you.train_skill("Armour", 1)
-:    you.train_skill("Fighting", 1)
-:    you.train_skill("Dodging", 1)
-:end
-
-:function run(stepping)
-:  if is_scared() then
-:    stop_running()
 :  end
 :  local threat_level = adjusted_threat()
 :  if threat_level > 0 then
@@ -197,15 +189,26 @@ macros += M 5 ===wait
 :      print_scary_weapons()
 :    end
 :  end
+:  return true
+:end
+
+:function train()
+:    you.train_skill("Axes", 2)
+:    you.train_skill("Armour", 1)
+:    you.train_skill("Fighting", 1)
+:    you.train_skill("Dodging", 1)
+:end
+
+:function run(stepping)
+:  if is_scared() then
+:    stop_running()
+:  end
 :  if is_invisible_monster_present() then
 :    update_invisible_waypoint()
-:  else
-:    --invisible_waypoint_exists = false
 :  end
 :  if running or stepping then
 :    crawl.more_autoclear(true)
 :    if is_escaping() then
-:      print("ESCAPING!")
 :      escape()
 :      return
 :    end
@@ -217,6 +220,10 @@ macros += M 5 ===wait
 :        if not attempt_mini_explore() then
 :          stop_running()
 :        end
+:        return
+:      end
+:      if must_start_escaping() then
+:        start_escaping()
 :        return
 :      end
 :      if must_berserk() then
@@ -463,6 +470,10 @@ macros += M 5 ===wait
 :    return false
 :  end
 :  return is_angry()
+:end
+
+:function must_start_escaping()
+:  return false
 :end
 
 :function is_berserk_bad()
@@ -892,18 +903,21 @@ macros += M 5 ===wait
 :end
 
 :function stop_escaping()
-:  print("STOPPED ESCAPING")
-:  c_persist.escape_plans[you.branch() .. you.depth()] = nil
-:  clear_exclusions()
+:  if is_escaping() then
+:    c_persist.escape_plans[you.branch() .. you.depth()] = nil
+:    clear_exclusions()
+:  end
 :end
 
 :function start_escaping()
-:  print("STARTED ESCAPING")
-:  escape_plan().mode = 0
+:  if not is_escaping() then
+:    escape_plan().mode = 0
+:  end
 :end
 
 :function escape()
 :  local plan = escape_plan()
+:  print("EXECUTING ESCAPE STEP " .. plan.mode, 6)
 :  if plan.mode == 0 then
 :    exclude_monsters()
 :    plan.mode = plan.mode + 1
@@ -925,6 +939,10 @@ macros += M 5 ===wait
 :  end
 :  if plan.mode == 2 then
 :    clear_exclusions()
+:    plan.mode = plan.mode + 1
+:    return true
+:  end
+:  if plan.mode == 3 then
 :    if plan.turns == you.turns() then
 :      return false
 :    end
@@ -2088,7 +2106,18 @@ macros += M 5 ===wait
 ############################################################################
 
 macros += M c ===debug
-macros += M 0 ===start_escaping
+macros += M 0 ===debug_escape
+
+:function debug_escape()
+:  if is_up_stairs(0, 0) then
+:    print("ON STAIRS!")
+:    return
+:  end
+:  if not is_escaping() then
+:    start_escaping()
+:  end
+:  step()
+:end
 
 :function debug()
 :  print("DEBUG")

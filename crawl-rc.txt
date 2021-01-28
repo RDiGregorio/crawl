@@ -2,7 +2,7 @@
 
 # use the c_message hook instead of searching last message!
 # handle oklob plant
-# handle shops
+# handle shops: items.shop_inventory() and items.shopping_list()
 # script wand usage on eels, some blinkers
 # script special tactics for certain monsters
 
@@ -81,8 +81,8 @@ message_colour += mute:menu to convert
 message_colour += mute:Move the cursor to view the level map
 message_colour += mute:Returning to the game
 
-use_animations -= beam
-#use_animations -= beam, range, hp, monster_in_sight, pickup, monster, player, branch_entry
+use_animations -= beam, pickup, branch_entry
+#use_animations -= range, hp, monster_in_sight, monster, player
 
 species = ho
 background = be
@@ -141,19 +141,6 @@ macros += M 5 ===wait
 :  end
 :end
 
-:function must_stop_running()
-:  if not running then
-:    return false
-:  end
-:  if in_last_message("would you want") or
-:      -- in_last_message("are on fire") or
-:      in_last_message("too injured") or
-:      in_last_message("too confused") then
-:    return true
-:  end
-:  return is_scared()
-:end
-
 :function ready()
 :  crawl.redraw_screen()
 :  if you.turns() == 0 then
@@ -178,7 +165,7 @@ macros += M 5 ===wait
 :end
 
 :function run(stepping)
-:  if must_stop_running() then
+:  if is_scared() then
 :    stop_running()
 :  end
 :  local threat_level = adjusted_threat()
@@ -281,7 +268,7 @@ macros += M 5 ===wait
 :    unshaft()
 :    return
 :  end
-:  if floor_complete() then
+:  if not attempt("o") then
 :    if safe_to_descend() then
 :      crawl.sendkeys("G" .. goal() .. ENTER_KEY)
 :      return
@@ -289,7 +276,6 @@ macros += M 5 ===wait
 :    stop_running()
 :    return
 :  end
-:  crawl.sendkeys("o")
 :end
 
 :function attempt_mini_explore()
@@ -319,10 +305,6 @@ macros += M 5 ===wait
 :    return feature:find("stairs_down")
 :  end
 :  return false
-:end
-
-:function floor_complete()
-:  return in_last_message("explore") or in_last_message("exploring")
 :end
 
 :function cleared_depth(branch)
@@ -1820,11 +1802,6 @@ macros += M 5 ===wait
 # general utility                                                          #
 ############################################################################
 
-:function in_last_message(message, count)
-:  count = count or 1
-:  return crawl.messages(count):find(message)
-:end
-
 :function print(value, channel)
 :  crawl.mpr(tostring(value), channel)
 :end
@@ -1913,17 +1890,27 @@ macros += M 5 ===wait
 :    stop_running()
 :    return
 :  end
+:  if text:find("would you want") or
+:      text:find("too confused") then
+:    stop_running()
+:    return
+:  end
+:  if text:find("explore") or text:find("exploring") then
+:    if you.depth() == cleared_depth() + 1 then
+:      c_persist.cleared_depth[you.branch()] = you.depth()
+:    end
+:    return
+:  end
+:  if text:find("reachable target") then
+:    no_reachable_target = true
+:    return
+:  end
 :  if text:find("There is an entrance") and
 :      view.feature_at(0, 0) == "enter_shop" then
 :    crawl.sendkeys(ESCAPE_KEY)
 :    return
 :  end
-:  if text:find("Blink to where?") then
-:    if not scroll_of_blinking_letter() then
-:      crawl.sendkeys("fy")
-:    end
-:    return
-:  end
+:  -- item identification
 :  if text:find("is a scroll of identify") then
 :    for item in inventory() do
 :      if want_to_identify_with_scroll(item) then
@@ -1950,18 +1937,9 @@ macros += M 5 ===wait
 :    end
 :    return
 :  end
-:  if text:find("Reactivating autopickup") then
-:    invisible_monster_name = nil
-:    invisible_waypoint_exists = false
-:    return
-:  end
-:  if text:find("reachable target") then
-:    no_reachable_target = true
-:    return
-:  end
-:  if text:find("explore") or text:find("exploring") then
-:    if you.depth() == cleared_depth() + 1 then
-:      c_persist.cleared_depth[you.branch()] = you.depth()
+:  if text:find("Blink to where?") then
+:    if not scroll_of_blinking_letter() then
+:      crawl.sendkeys("fy")
 :    end
 :    return
 :  end
@@ -1979,6 +1957,11 @@ macros += M 5 ===wait
 :  if text:find("the .* flickers out of sight") then
 :    local _, _, match = text:find("the (.*) flickers out of sight")
 :    invisible_monster_name = match
+:    return
+:  end
+:  if text:find("Reactivating autopickup") then
+:    invisible_monster_name = nil
+:    invisible_waypoint_exists = false
 :    return
 :  end
 :end

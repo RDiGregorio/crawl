@@ -6,6 +6,7 @@
 # handle shops
 # write a best_armour_to_enchant function, handle reading enchant scrolls
 # script wand usage on eels, some blinkers
+# script special tactics for certain monsters
 
 ############################################################################
 # options                                                                  #
@@ -76,8 +77,8 @@ channel.talk = mute
 channel.talk_visual = mute
 channel.timed_portal = mute
 channel.monster_damage = mute
-message_colour += mute:menu to convert
 
+message_colour += mute:menu to convert
 message_colour += mute:Move the cursor to view the level map
 message_colour += mute:Returning to the game
 
@@ -553,7 +554,6 @@ macros += M 5 ===wait
 :    -- paralysis
 :    "floating eye",
 :    "dream sheep",
-:    --"catoblepas",
 :    -- torment
 :    "lurking horror",
 :    -- misc
@@ -862,8 +862,9 @@ macros += M 5 ===wait
 
 :function avoid_dangerous_clouds()
 :  local cloud = view.cloud_at(0, 0)
+:  -- handles catoblepas
 :  if cloud == "calcifying dust" then
-:    local target = find_monster("catoblepas") or closest_monster()
+:    local target = closest_monster()
 :    if not target then
 :      return attempt_mini_explore()
 :    end
@@ -969,6 +970,9 @@ macros += M 5 ===wait
 :    if item.subtype() == "amulet of inaccuracy" then
 :      return true
 :    end
+:    if item.subtype() == "amulet of faith" and is_faith_bound() then
+:      return false
+:    end
 :    for other in inventory() do
 :      if compare_amulets(item, other) < 0 then
 :        return true
@@ -1044,6 +1048,7 @@ macros += M 5 ===wait
 
 :function is_unneeded_duplicate(item)
 :  if item.artefact or
+:      item.equipped or
 :      item.class(true) == "missile" or
 :      item.class(true) == "potion" or
 :      item.class(true) == "scroll" then
@@ -1094,6 +1099,17 @@ macros += M 5 ===wait
 :    end
 :  end
 :  return false
+:end
+
+:function best_armour_to_enchant()
+:  local boots = items.equipped_at("Boots")
+:  local gloves = items.equipped_at("Gloves")
+:  local helmet = items.equipped_at("Helmet")
+:  local cloak = items.equipped_at("Cloak")
+:
+:
+:
+:
 :end
 
 :function want_book(item)
@@ -1503,6 +1519,10 @@ macros += M 5 ===wait
 :  return amulet and amulet.subtype() == "amulet of faith"
 :end
 
+:function is_faith_bound()
+:  return is_faith_equipped() and you.piety_rank() < 6
+:end
+
 :function equip_ring(item, letter)
 :  if is_ring(item) then
 :    if is_ring_missing() then
@@ -1592,7 +1612,8 @@ macros += M 5 ===wait
 :        if not equipped or
 :            not item.fully_identified and not is_faith_equipped() or
 :            compare_amulets(item, equipped) > 0 then
-:          if not (equipped and equipped.cursed) then
+:          if not (equipped and equipped.cursed)
+:              and not is_faith_bound() then
 :            crawl.sendkeys("P" .. items.index_to_letter(item.slot))
 :            return true
 :          end
@@ -1957,5 +1978,5 @@ macros += M 5 ===wait
 macros += M c ===debug
 
 :function debug()
-:    print(adjusted_threat())
+:  print(you.piety_rank())
 :end

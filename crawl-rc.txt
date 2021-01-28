@@ -144,8 +144,7 @@ macros += M 5 ===wait
 :    return false
 :  end
 :  if in_last_message("would you want") or
-:      in_last_message("standing in a cloud") or
-:      in_last_message("are on fire") or
+:      -- in_last_message("are on fire") or
 :      in_last_message("too injured") or
 :      in_last_message("too confused") then
 :    return true
@@ -346,8 +345,10 @@ macros += M 5 ===wait
 :end
 
 :function safe_to_descend()
-:  return you.depth() == travel.find_deepest_explored(you.branch()) or
-:      you.depth() < cleared_depth()
+:  -- todo: this needs work
+:  --return you.depth() == travel.find_deepest_explored(you.branch()) or
+:  --    you.depth() < cleared_depth()
+:  return true
 :end
 
 :function goal()
@@ -746,13 +747,13 @@ macros += M 5 ===wait
 :end
 
 :function hp_percent()
-:  a, b = you.hp()
+:  local a, b = you.hp()
 :  a = you.poison_survival() or a
 :  return 100 * a / b
 :end
 
 :function mp_percent()
-:  a, b = you.mp()
+:  local a, b = you.mp()
 :  return 100 * a / b
 :end
 
@@ -858,7 +859,10 @@ macros += M 5 ===wait
 :  local cloud = view.cloud_at(0, 0)
 :  if cloud == "calcifying dust" then
 :    local target = find_monster("catoblepas") or closest_monster()
-:    return target and approach(closest_adjacent_traversable(target:pos()))
+:    if not target then
+:      return attempt_mini_explore()
+:    end
+:    return approach(closest_adjacent_traversable(target:pos()))
 :  end
 :  return true
 :end
@@ -868,15 +872,15 @@ macros += M 5 ===wait
 :  for a = -1, 1 do
 :    for b = -1, 1 do
 :      if not (a == 0 and b == 0) and traversable(a, b) then
-:        adjacent[table.getn(adjacent) + 1] = point(a, b)
+:        local cell = point(a, b)
+:        adjacent[table.getn(adjacent) + 1] = cell
 :      end
 :    end
 :  end
 :  if table.getn(adjacent) > 0 then
-:    function compare(a, b)
-:      return distance(a.x, a.y, x, y) < distance(b.x, b.y, x, y)
-:    end
-:    table.sort(adjacent, compare)
+:    table.sort(adjacent, function(p0, p1)
+:      return distance(p0.x, p0.y, x, y) < distance(p1.x, p1.y, x, y)
+:    end)
 :    return adjacent[1].x, adjacent[1].y
 :  end
 :end

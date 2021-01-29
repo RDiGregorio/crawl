@@ -9,7 +9,8 @@
 # NEED TO SANITIZE MONSTER NAMES TO USE AS TABLE KEYS!!
 # prevent running in some cases (berserk, slow, poisoned?)
 # prevent running if some fast mobs are adjacent?
-# can_escape()
+
+# escape logic needs a LOT of work
 
 ############################################################################
 # options                                                                  #
@@ -148,6 +149,7 @@ macros += M 5 ===wait
 
 :function ready()
 :  crawl.redraw_screen()
+:  print_information()
 :  if you.turns() == 0 then
 :    c_persist.cleared_depth = {}
 :    c_persist.escape_plans = {}
@@ -159,6 +161,9 @@ macros += M 5 ===wait
 :end
 
 :function housekeeping()
+:  if is_invisible_monster_present() then
+:    update_invisible_waypoint()
+:  end
 :  if is_escaping() then
 :    if is_up_stairs(0, 0) or is_down_stairs(0, 0) then
 :      stop_escaping()
@@ -176,23 +181,24 @@ macros += M 5 ===wait
 :    no_reachable_target = false
 :    return false
 :  end
-:  local threat_level = adjusted_threat()
-:  if threat_level > 0 then
-:    local channel = nil
-:    local message = "Danger: "
-:    message = message .. math.floor(danger_percent()) .. "%"
-:    if threat_level >= IMPOSSIBLE then
-:      channel = 6
-:    end
-:    print(message, channel)
-:    if scary_monster_present() then
-:      print_scary_monsters()
-:    end
-:    if scary_weapon_present() then
-:      print_scary_weapons()
-:    end
-:  end
 :  return true
+:end
+
+:function print_information()
+:  local threat_level = adjusted_threat()
+:  local channel = nil
+:  local message = "Danger: "
+:  message = message .. math.floor(danger_percent()) .. "%"
+:  if threat_level >= IMPOSSIBLE then
+:    channel = 6
+:  end
+:  print(message, channel)
+:  if scary_monster_present() then
+:    print_scary_monsters()
+:  end
+:  if scary_weapon_present() then
+:    print_scary_weapons()
+:  end
 :end
 
 :function train()
@@ -205,13 +211,12 @@ macros += M 5 ===wait
 :function run(stepping)
 :  if is_scared() or is_escaping() then
 :    stop_running()
+:    print("SCARED!", 6)
 :  end
-:  if is_scared() and is_escaping() then
-:    stop_escaping()
-:    return
-:  end
-:  if is_invisible_monster_present() then
-:    update_invisible_waypoint()
+:  if not can_escape() and is_escaping() then
+:    --print("UNABLE TO ESCAPE!")
+:    --stop_escaping()
+:    --return
 :  end
 :  if running or stepping then
 :    crawl.more_autoclear(true)
@@ -231,6 +236,10 @@ macros += M 5 ===wait
 :      end
 :      if must_start_escaping() then
 :        start_escaping()
+:        return
+:      end
+:      if must_hand() then
+:        crawl.sendkeys("ab")
 :        return
 :      end
 :      if must_berserk() then
@@ -471,6 +480,7 @@ macros += M 5 ===wait
 :end
 
 :function must_berserk()
+:  -- todo: add better checks for if this ability is possible
 :  if is_safe()
 :      or berserk_disabled()
 :      or is_berserk_bad() then
@@ -479,8 +489,23 @@ macros += M 5 ===wait
 :  return is_angry()
 :end
 
+:function must_hand()
+:  -- todo: add better checks for if this ability is possible
+:  if is_safe() or
+:    you.piety_rank() < 2 or
+:    you.regenerating() or
+:    you.berserk() then
+:    return false
+:  end
+:  if find_monster("Sigmund") or find_monster("Grinder") then
+:    return true
+:  end
+:  return false
+:end
+
 :function must_start_escaping()
-:  return adjusted_threat() >= HARD * 4 / 3
+:  -- return adjusted_threat() >= NIGHTMARE * 4 / 3
+:  return false
 :end
 
 :function is_berserk_bad()
@@ -491,7 +516,32 @@ macros += M 5 ===wait
 :end
 
 :function can_escape()
+:  if is_scared() then
+:    return false
+:  end
+:  if you.berserk() or any_fast_monster(1) then
+:    return false
+:  end
+:  if you.absdepth() == 1 and not you.have_orb() then
+:    return false
+:  end
 :  return true
+:end
+
+:function any_fast_monster(radius)
+:  for a = -radius, radius do
+:    for b = -radius, radius do
+:      local c = monster.get_monster_at(a, b)
+:      if c and not c:is_safe() then
+:        local speed = c:speed_description()
+:        if speed == "fast" or
+:            speed == "very fast" or
+:            speed == "extremely fast" then
+:          return c
+:        end
+:      end
+:    end
+:  end
 :end
 
 :function find_monster(name)
@@ -505,13 +555,12 @@ macros += M 5 ===wait
 :  end
 :end
 
-:function count_monsters(f)
-:  -- this is unused
+:function count_monsters()
 :  local result = 0
 :  for a = -8, 8 do
 :    for b = -8, 8 do
 :      local c = monster.get_monster_at(a, b)
-:      if c and f(c) then
+:      if c and not c.is_safe(c) then
 :        result = result + 1
 :      end
 :    end
@@ -544,7 +593,8 @@ macros += M 5 ===wait
 :      return true
 :    end
 :    if not is_fearless() then
-:      return adjusted_threat() >= NIGHTMARE * 4 / 3
+       -- experimental
+:      return adjusted_threat() >= NIGHTMARE * 4 / 3 -- IMPOSSIBLE
 :    end
 :  end
 :  return false
@@ -2133,5 +2183,5 @@ macros += M 0 ===debug_escape
 :end
 
 :function debug()
-:  print("DEBUG")
+:  print(you.regenerating())
 :end

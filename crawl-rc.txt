@@ -6,6 +6,10 @@
 # script wand usage on eels, some blinkers
 # script special tactics for certain monsters
 # need to add checks for safe and automatically trigger it
+# NEED TO SANITIZE MONSTER NAMES TO USE AS TABLE KEYS!!
+# prevent running in some cases (berserk, slow, poisoned?)
+# prevent running if some fast mobs are adjacent?
+# can_escape()
 
 ############################################################################
 # options                                                                  #
@@ -147,7 +151,6 @@ macros += M 5 ===wait
 :  if you.turns() == 0 then
 :    c_persist.cleared_depth = {}
 :    c_persist.escape_plans = {}
-:    c_persist.threat = {}
 :    train()
 :  end
 :  if housekeeping() then
@@ -200,8 +203,12 @@ macros += M 5 ===wait
 :end
 
 :function run(stepping)
-:  if is_scared() then
+:  if is_scared() or is_escaping() then
 :    stop_running()
+:  end
+:  if is_scared() and is_escaping() then
+:    stop_escaping()
+:    return
 :  end
 :  if is_invisible_monster_present() then
 :    update_invisible_waypoint()
@@ -473,7 +480,7 @@ macros += M 5 ===wait
 :end
 
 :function must_start_escaping()
-:  return false
+:  return adjusted_threat() >= HARD * 4 / 3
 :end
 
 :function is_berserk_bad()
@@ -481,6 +488,10 @@ macros += M 5 ===wait
 :    return true
 :  end
 :  return false
+:end
+
+:function can_escape()
+:  return true
 :end
 
 :function find_monster(name)
@@ -529,12 +540,11 @@ macros += M 5 ===wait
 :      return true
 :    end
 :    if you.status("barbed spikes") or
-:        --you.caught() or
 :        has_bad_transformation() then
 :      return true
 :    end
 :    if not is_fearless() then
-:      return adjusted_threat() >= NIGHTMARE
+:      return adjusted_threat() >= NIGHTMARE * 4 / 3
 :    end
 :  end
 :  return false
@@ -555,7 +565,7 @@ macros += M 5 ===wait
 :    "floating eye",
 :    "dream sheep",
 :    -- torment
-:    "lurking horror",
+:    -- "lurking horror", -- might not be needed
 :    -- misc
 :    "hydra",
 :    "manticore",
@@ -692,14 +702,19 @@ macros += M 5 ===wait
 :    -- early game
 :    "worm",
 :    "gnoll",
-:    -- large monsters
+:    -- giants
 :    "ogre",
 :    "cyclops",
+:    "ettin",
 :    "giant",
-:    -- packs
+:    "titan",
+:    "juggernaut",
+:    -- mid game
 :    "ugly thing",
 :    -- poison monsters
 :    "adder",
+:    -- acid monsters
+:    "jelly",
 :    -- electric monsters
 :    "sky beast",
 :    -- petrification
@@ -708,21 +723,19 @@ macros += M 5 ===wait
 :  local result = target:threat()
 :  for _, name in ipairs(hard_monsters) do
 :    if target.name(target):find(name) or
-:        target.is_unique(target) or
+:        --target.is_unique(target) or
 :        target:is("berserk") or
 :        has_spell(target, "Smiting") then
-:        result = result + 1
-:      c_persist.threat[target:name()] = result
+:      result = result + 1
 :      return 2 ^ result
 :    end
 :  end
-:  c_persist.threat[target:name()] = result
 :  return 2 ^ result
 :end
 
 :function calculate_invisible_threat()
 :  if is_invisible_monster_present() then
-:    return c_persist.threat[invisible_monster_name] or NIGHTMARE
+:    return NIGHTMARE
 :  end
 :  return 0
 :end
@@ -1130,12 +1143,12 @@ macros += M 5 ===wait
 :    return true
 :  end
 :  local junk_subtypes = {
-:    "attraction",
-:    "degeneration",
-:    "lignification",
 :    --"brilliance",
 :    --"holy word",
 :    --"silence",
+:    "attraction",
+:    "degeneration",
+:    "lignification",
 :    "immolation",
 :    "noise",
 :    "random uselessness",

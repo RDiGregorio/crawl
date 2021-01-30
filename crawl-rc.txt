@@ -1997,17 +1997,8 @@ function compare(left, right)
 end
 
 function to_key(x, y)
-  local translations = {
-    [1] = "b",
-    [2] = "j",
-    [3] = "n",
-    [4] = "h",
-    [5] = "s",
-    [6] = "l",
-    [7] = "y",
-    [8] = "k",
-    [9] = "u"}
-  return translations[5 + x - 3 * y]
+  local keys = {"b", "j", "n", "h", "s", "l", "y", "k", "u"}
+  return keys[5 + x - 3 * y]
 end
 
 function clamp(value, min, max)
@@ -2182,7 +2173,7 @@ function debug_escape()
 end
 
 function debug()
-  print(you.branch())
+  print(to_key(-1, 1))
 end
 
 function foo()

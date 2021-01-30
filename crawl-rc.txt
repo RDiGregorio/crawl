@@ -12,6 +12,11 @@
 
 # escape logic needs a LOT of work
 # can macro the escape key to get around paralysis force more
+# scroll of identify is buggy when you have artifacts
+# ring logic is buggy, trying to equip rings you are already wearing
+# can walk into travel exclusions while tabbing
+
+# add logic to bia when piety > 4
 
 ############################################################################
 # options                                                                  #
@@ -96,2126 +101,2115 @@ background = be
 weapon = hand axe
 default_manual_training = true
 
-############################################################################
-# main                                                                     #
-############################################################################
+--############################################################################
+--# main                                                                     #
+--############################################################################
 
 macros += M o ===start_running
 macros += M p ===step
 macros += M \{9} ===tab
 macros += M 5 ===wait
 
-:local POPCORN = 2 ^ 0
-:local EASY = 2 ^ 1
-:local MEDIUM = 2 ^ 2
-:local HARD = 2 ^ 3
-:local NIGHTMARE = 2 ^ 4
-:local IMPOSSIBLE = 2 ^ 5
+{
 
-:local ESCAPE_KEY = string.char(27)
-:local BACKSPACE_KEY = string.char(8)
-:local TAB_KEY = string.char(9)
-:local ENTER_KEY = string.char(13)
+local POPCORN = 2 ^ 0
+local EASY = 2 ^ 1
+local MEDIUM = 2 ^ 2
+local HARD = 2 ^ 3
+local NIGHTMARE = 2 ^ 4
+local IMPOSSIBLE = 2 ^ 5
 
-:local running = false
-:local no_reachable_target = false
+local ESCAPE_KEY = string.char(27)
+local BACKSPACE_KEY = string.char(8)
+local TAB_KEY = string.char(9)
+local ENTER_KEY = string.char(13)
 
-:local invisible_waypoint_exists = false
-:local invisible_monster_name = nil
-:local attempt_turns = {}
+local running = false
+local no_reachable_target = false
 
-:function attempt(keys, index)
-:  -- always returns true when first called
-:  -- returns false if called more than once in the same turn
-:  index = index or "default"
-:  local turns = attempt_turns[index] or -1
-:  if you.turns() == turns then
-:    return false
-:  end
-:  attempt_turns[index] = you.turns()
-:  crawl.sendkeys(keys)
-:  return true
-:end
+local invisible_waypoint_exists = false
+local invisible_monster_name = nil
+local attempt_turns = {}
 
-:function start_running()
-:  running = true
-:end
+function attempt(keys, index)
+  -- always returns true when first called
+  -- returns false if called more than once in the same turn
+  index = index or "default"
+  local turns = attempt_turns[index] or -1
+  if you.turns() == turns then
+    return false
+  end
+  attempt_turns[index] = you.turns()
+  crawl.sendkeys(keys)
+  return true
+end
 
-:function stop_running()
-:  if running then
-:    running = false
-:    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-:  end
-:end
+function start_running()
+  running = true
+end
 
-:function ready()
-:  crawl.redraw_screen()
-:  print_information()
-:  if you.turns() == 0 then
-:    c_persist.cleared_depth = {}
-:    c_persist.escape_plans = {}
-:    train()
-:  end
-:  if housekeeping() then
-:    run()
-:  end
-:end
+function stop_running()
+  if running then
+    running = false
+    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+  end
+end
 
-:function housekeeping()
-:  if is_invisible_monster_present() then
-:    update_invisible_waypoint()
-:  end
-:  if is_escaping() then
-:    if is_up_stairs(0, 0) or is_down_stairs(0, 0) then
-:      stop_escaping()
-:      return false
-:    end
-:    if not (escape_plan().mode == 0) then
-:      escape()
-:    end
-:    return false
-:  end
-:  if no_reachable_target then
-:    if not attempt_mini_explore() and not attempt_mini_escape() then
-:      stop_running()
-:    end
-:    no_reachable_target = false
-:    return false
-:  end
-:  return true
-:end
+function ready()
+  crawl.redraw_screen()
+  print_information()
+  if you.turns() == 0 then
+    c_persist.cleared_depth = {}
+    c_persist.escape_plans = {}
+    train()
+  end
+  if housekeeping() then
+    run()
+  end
+end
 
-:function print_information()
-:  local threat_level = adjusted_threat()
-:  local channel = nil
-:  local message = "Danger: "
-:  message = message .. math.floor(danger_percent()) .. "% (" .. danger_string(threat_level) .. ")"
-:  if threat_level >= IMPOSSIBLE then
-:    channel = 6
-:  end
-:  print(message, channel)
-:  if scary_monster_present() then
-:    print_scary_monsters()
-:  end
-:  if scary_weapon_present() then
-:    print_scary_weapons()
-:  end
-:end
+function housekeeping()
+  if is_invisible_monster_present() then
+    update_invisible_waypoint()
+  end
+  if is_escaping() then
+    if is_up_stairs(0, 0) or is_down_stairs(0, 0) then
+      stop_escaping()
+      return false
+    end
+    if not (escape_plan().mode == 0) then
+      escape()
+    end
+    return false
+  end
+  if no_reachable_target then
+    if not attempt_mini_explore() and not attempt_mini_escape() then
+      stop_running()
+    end
+    no_reachable_target = false
+    return false
+  end
+  return true
+end
 
-:function train()
-:    you.train_skill("Axes", 2)
-:    you.train_skill("Armour", 1)
-:    you.train_skill("Fighting", 1)
-:    you.train_skill("Dodging", 1)
-:end
+function print_information()
+  local threat_level = adjusted_threat()
+  local channel = nil
+  local message = "Danger: "
+  message = message .. math.floor(danger_percent()) .. "% (" .. danger_string(threat_level) .. ")"
+  if threat_level >= IMPOSSIBLE then
+    channel = 6
+  end
+  print(message, channel)
+  if scary_monster_present() then
+    print_scary_monsters()
+  end
+  if scary_weapon_present() then
+    print_scary_weapons()
+  end
+end
 
-:function run(stepping)
-:  if is_scared() or is_escaping() then
-:    stop_running()
-:    print("SCARED!", 6)
-:  end
-:  if not can_escape() and is_escaping() then
-:    --print("UNABLE TO ESCAPE!")
-:    --stop_escaping()
-:    --return
-:  end
-:  if running or stepping then
-:    crawl.more_autoclear(true)
-:    if is_escaping() then
-:      escape()
-:      return
-:    end
-:    if is_safe() then
-:      explore()
-:    else
-:      if no_monsters_present() then
-:        -- helps with clouds
-:        if not attempt_mini_explore() then
-:          stop_running()
-:        end
-:        return
-:      end
-:      if must_start_escaping() then
-:        start_escaping()
-:        return
-:      end
-:      if must_hand() then
-:        crawl.sendkeys("ab")
-:        return
-:      end
-:      if must_berserk() then
-:        crawl.sendkeys("aa")
-:        return
-:      end
-:      tab(true)
-:    end
-:  else
-:    crawl.more_autoclear(false)
-:  end
-:end
+function train()
+    you.train_skill("Axes", 2)
+    you.train_skill("Armour", 1)
+    you.train_skill("Fighting", 1)
+    you.train_skill("Dodging", 1)
+end
 
-:function step()
-:  run(true)
-:end
+function run(stepping)
+  if is_scared() or is_escaping() then
+    stop_running()
+    print("SCARED!", 6)
+  end
+  if not can_escape() and is_escaping() then
+    --print("UNABLE TO ESCAPE!")
+    --stop_escaping()
+    --return
+  end
+  if running or stepping then
+    crawl.more_autoclear(true)
+    if is_escaping() then
+      escape()
+      return
+    end
+    if is_safe() then
+      explore()
+    else
+      if no_monsters_present() then
+        -- helps with clouds
+        if not attempt_mini_explore() then
+          stop_running()
+        end
+        return
+      end
+      if must_start_escaping() then
+        start_escaping()
+        return
+      end
+      if must_hand() then
+        crawl.sendkeys("ab")
+        return
+      end
+      if must_berserk() then
+        crawl.sendkeys("aa")
+        return
+      end
+      tab(true)
+    end
+  else
+    crawl.more_autoclear(false)
+  end
+end
 
-############################################################################
-# exploration                                                              #
-############################################################################
+function step()
+  run(true)
+end
 
-:function must_rest()
-:  return is_after_berserk() or
-:      hp_percent() < 100 or
-:      mp_percent() < 100 or
-:      you.slowed() or
-:      you.silencing() or
-:      you.confused() or
-:      you.status("barbed spikes") or
-:      you.status("marked") or
-:      you.corrosion() > 0 or
-:      has_bad_transformation()
-:end
+--############################################################################
+--# exploration                                                              #
+--############################################################################
 
-:function is_after_berserk()
-:  return you.status("berserk cooldown")
-:end
+function must_rest()
+  return is_after_berserk() or
+      hp_percent() < 100 or
+      mp_percent() < 100 or
+      you.slowed() or
+      you.silencing() or
+      you.confused() or
+      you.status("barbed spikes") or
+      you.status("marked") or
+      you.corrosion() > 0 or
+      has_bad_transformation()
+end
 
-:function explore()
-:  if is_safe() then
-:    if you.berserk() or must_rest() then
-:      if not attempt("5") then
-:        stop_running()
-:      end
-:      return
-:    end
-:    if remove_curse() then
-:      return
-:    end
-:    if identify_items() then
-:      return
-:    end
-:    if upgrade_equipment() then
-:      return
-:    end
-:    if remove_dangerous_rings() then
-:      return
-:    end
-:    if drop_junk() then
-:      return
-:    end
-:  else
-:    stop_running()
-:    return
-:  end
-:  if shafted() then
-:    unshaft()
-:    return
-:  end
-:  if not attempt("o") then
-:    if safe_to_descend() then
-:      crawl.sendkeys("G" .. goal() .. ENTER_KEY)
-:      return
-:    end
-:    stop_running()
-:    return
-:  end
-:end
+function is_after_berserk()
+  return you.status("berserk cooldown")
+end
 
-:function attempt_mini_explore()
-:  return attempt("Xo." .. ESCAPE_KEY, "explore")
-:end
+function explore()
+  if is_safe() then
+    if you.berserk() or must_rest() then
+      if not attempt("5") then
+        stop_running()
+      end
+      return
+    end
+    if remove_curse() then
+      return
+    end
+    if identify_items() then
+      return
+    end
+    if upgrade_equipment() then
+      return
+    end
+    if remove_dangerous_rings() then
+      return
+    end
+    if drop_junk() then
+      return
+    end
+  else
+    stop_running()
+    return
+  end
+  if shafted() then
+    unshaft()
+    return
+  end
+  if not attempt("o") then
+    if safe_to_descend() then
+      crawl.sendkeys("G" .. goal() .. ENTER_KEY)
+      return
+    end
+    stop_running()
+    return
+  end
+end
 
-:function is_up_stairs(x, y)
-:  local feature = view.feature_at(x, y)
-:  if feature then
-:    return feature:find("stone_stairs_up") or
-:        feature:find("escape_hatch_up") or
-:        feature:find("exit")
-:  end
-:  return false
-:end
+function attempt_mini_explore()
+  return attempt("Xo." .. ESCAPE_KEY, "explore")
+end
 
-:function is_down_stairs(x, y)
-:  local feature = view.feature_at(x, y)
-:  if feature then
-:    return feature:find("stairs_down")
-:  end
-:  return false
-:end
+function is_up_stairs(x, y)
+  local feature = view.feature_at(x, y)
+  if feature then
+    return feature:find("stone_stairs_up") or
+        feature:find("escape_hatch_up") or
+        feature:find("exit")
+  end
+  return false
+end
 
-:function cleared_depth(branch)
-:  branch = branch or you.branch()
-:  return c_persist.cleared_depth[branch] or 0
-:end
+function is_down_stairs(x, y)
+  local feature = view.feature_at(x, y)
+  if feature then
+    return feature:find("stairs_down")
+  end
+  return false
+end
 
-:function shafted()
-:  return you.depth() > cleared_depth() + 1
-:end
+function cleared_depth(branch)
+  branch = branch or you.branch()
+  return c_persist.cleared_depth[branch] or 0
+end
 
-:function unshaft()
-:  if not attempt_mini_escape() then
-:    if not attempt("o") then
-:      stop_running()
-:    end
-:  end
-:end
+function shafted()
+  return you.depth() > cleared_depth() + 1
+end
 
-:function safe_to_descend()
-:  -- todo: this needs work
-:  --return you.depth() == travel.find_deepest_explored(you.branch()) or
-:  --    you.depth() < cleared_depth()
-:  return true
-:end
+function unshaft()
+  if not attempt_mini_escape() then
+    if not attempt("o") then
+      stop_running()
+    end
+  end
+end
 
-:function goal()
-:  -- complete D:11
-:  if cleared_depth("D") < 11 then
-:    if you.branch() == "D" then
-:      return "D" .. you.depth() + 1
-:    end
-:    return "D" .. goal_floor("D")
-:  end
-:  -- complete Lair:6
-:  if cleared_depth("Lair") < 6 then
-:    if you.branch() == "Lair" then
-:      return "L" .. you.depth() + 1
-:    end
-:    return "L" .. goal_floor("Lair")
-:  end
-:  -- complete Orc:2
-:  if cleared_depth("Orc") < 2 then
-:    if you.branch() == "Orc" then
-:      return "O" .. you.depth() + 1
-:    end
-:    return "O" .. goal_floor("Orc")
-:  end
-:  -- complete Dungeon:15
-:  if cleared_depth("D") < 15 then
-:    if you.branch() == "D" then
-:      return "D" .. you.depth() + 1
-:    end
-:    return "D" .. goal_floor("D")
-:  end
-:  stop_running()
-:  return ""
-:end
+function safe_to_descend()
+  -- todo: this needs work
+  --return you.depth() == travel.find_deepest_explored(you.branch()) or
+  --    you.depth() < cleared_depth()
+  return true
+end
 
-:function goal_floor(branch)
-:  local result = travel.find_deepest_explored(branch)
-:  if result < 1 then
-:    return 1
-:  end
-:  return result
-:end
+function goal()
+  -- complete D:11
+  if cleared_depth("D") < 11 then
+    if you.branch() == "D" then
+      return "D" .. you.depth() + 1
+    end
+    return "D" .. goal_floor("D")
+  end
+  -- complete Lair:6
+  if cleared_depth("Lair") < 6 then
+    if you.branch() == "Lair" then
+      return "L" .. you.depth() + 1
+    end
+    return "L" .. goal_floor("Lair")
+  end
+  -- complete Orc:2
+  if cleared_depth("Orc") < 2 then
+    if you.branch() == "Orc" then
+      return "O" .. you.depth() + 1
+    end
+    return "O" .. goal_floor("Orc")
+  end
+  -- complete Dungeon:15
+  if cleared_depth("D") < 15 then
+    if you.branch() == "D" then
+      return "D" .. you.depth() + 1
+    end
+    return "D" .. goal_floor("D")
+  end
+  stop_running()
+  return ""
+end
 
-############################################################################
-# combat                                                                   #
-############################################################################
+function goal_floor(branch)
+  local result = travel.find_deepest_explored(branch)
+  if result < 1 then
+    return 1
+  end
+  return result
+end
 
-:function is_fearless()
-:  if not running then
-:    return false
-:  end
-:  -- todo: allow reckless fighting in some cases
-:end
+--############################################################################
+--# combat                                                                   #
+--############################################################################
 
-:function has_bad_transformation()
-:  if you.transform() == "" then
-:    return false
-:  end
-:  return true
-:end
+function is_fearless()
+  if not running then
+    return false
+  end
+  -- todo: allow reckless fighting in some cases
+end
 
-:function tab(is_reckless)
-:  if hp_percent() <= 50 and not is_reckless then
-:    print("You are too injured to fight recklessly!")
-:    return
-:  end
-:  if you.caught() then
-:    crawl.sendkeys("b")
-:    return
-:  end
-:  if not avoid_dangerous_clouds() then
-:    stop_running()
-:    return
-:  end
-:  if is_invisible_monster_present() then
-:    if find_invisible(1) then
-:      crawl.sendkeys("*" .. to_key(find_invisible(1)))
-:      return
-:    end
-:    if no_visible_monsters_present() then
-:      if invisible_waypoint_exists then
-:        local x, y = travel.waypoint_delta(0)
-:        if x == 0 and y == 0 then
-:          invisible_waypoint_exists = false
-:          if not attempt_mini_escape() then
-:            stop_running()
-:          end
-:          return
-:        end
-:        if traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
-:          crawl.sendkeys(to_key(clamp(-x, -1, 1), clamp(-y, -1, 1)))
-:          return
-:        else
-:          invisible_waypoint_exists = false
-:        end
-:      end
-:      if not attempt_mini_escape() then
-:        stop_running()
-:      end
-:      return
-:    end
-:  end
-:  if you.confused() and hit_closest_monster() then
-:    return
-:  end
-:  crawl.sendkeys(TAB_KEY)
-:end
+function has_bad_transformation()
+  if you.transform() == "" then
+    return false
+  end
+  return true
+end
 
-:function wait()
-:  if must_rest() or
-:      you.berserk() or
-:      crawl.yesno("Are you sure you want to wait?", true, "n") then
-:    crawl.sendkeys("5")
-:  end
-:end
+function tab(is_reckless)
+  if hp_percent() <= 50 and not is_reckless then
+    print("You are too injured to fight recklessly!")
+    return
+  end
+  if you.caught() then
+    crawl.sendkeys("b")
+    return
+  end
+  if not avoid_dangerous_clouds() then
+    stop_running()
+    return
+  end
+  if is_invisible_monster_present() then
+    if find_invisible(1) then
+      crawl.sendkeys("*" .. to_key(find_invisible(1)))
+      return
+    end
+    if no_visible_monsters_present() then
+      if invisible_waypoint_exists then
+        local x, y = travel.waypoint_delta(0)
+        if x == 0 and y == 0 then
+          invisible_waypoint_exists = false
+          if not attempt_mini_escape() then
+            stop_running()
+          end
+          return
+        end
+        if traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
+          crawl.sendkeys(to_key(clamp(-x, -1, 1), clamp(-y, -1, 1)))
+          return
+        else
+          invisible_waypoint_exists = false
+        end
+      end
+      if not attempt_mini_escape() then
+        stop_running()
+      end
+      return
+    end
+  end
+  if you.confused() and hit_closest_monster() then
+    return
+  end
+  crawl.sendkeys(TAB_KEY)
+end
 
-:function must_berserk()
-:  -- todo: add better checks for if this ability is possible
-:  if is_safe() or not can_berserk() then
-:    return false
-:  end
-:  return is_angry()
-:end
+function wait()
+  if must_rest() or
+      you.berserk() or
+      crawl.yesno("Are you sure you want to wait?", true, "n") then
+    crawl.sendkeys("5")
+  end
+end
 
-:function must_hand()
-:  -- todo: add better checks for if this ability is possible
-:  if is_safe() or
-:    you.piety_rank() < 2 or
-:    you.regenerating() or
-:    you.berserk() then
-:    return false
-:  end
-:  if find_monster("Sigmund") or find_monster("Grinder") then
-:    return true
-:  end
-:  return false
-:end
+function must_berserk()
+  -- todo: add better checks for if this ability is possible
+  if is_safe() or not can_berserk() then
+    return false
+  end
+  return is_angry()
+end
 
-:function must_start_escaping()
-:  -- return adjusted_threat() >= NIGHTMARE * 4 / 3
-:  return false
-:end
+function must_hand()
+  -- todo: add better checks for if this ability is possible
+  if is_safe() or
+    you.piety_rank() < 2 or
+    you.regenerating() or
+    you.berserk() then
+    return false
+  end
+  if find_monster("Sigmund") or find_monster("Grinder") then
+    return true
+  end
+  return false
+end
 
-:function can_escape()
-:  if is_scared() then
-:    return false
-:  end
-:  if you.berserk() or any_fast_monster(1) then
-:    return false
-:  end
-:  if you.absdepth() == 1 and not you.have_orb() then
-:    return false
-:  end
-:  return true
-:end
+function must_start_escaping()
+  -- return adjusted_threat() >= NIGHTMARE * 4 / 3
+  return false
+end
 
-:function any_fast_monster(radius)
-:  radius = radius or 8
-:  for a = -radius, radius do
-:    for b = -radius, radius do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c:is_safe() then
-:        local speed = c:speed_description()
-:        if speed == "fast" or
-:            speed == "very fast" or
-:            speed == "extremely fast" then
-:          return c
-:        end
-:      end
-:    end
-:  end
-:end
+function can_escape()
+  if is_scared() then
+    return false
+  end
+  if you.berserk() or any_fast_monster(1) then
+    return false
+  end
+  if you.absdepth() == 1 and not you.have_orb() then
+    return false
+  end
+  return true
+end
 
-:function find_monster(name)
-:  for a = -8, 8 do
-:    for b = -8, 8 do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) and c.name(c):find(name) then
-:        return c
-:      end
-:    end
-:  end
-:end
+function any_fast_monster(radius)
+  radius = radius or 8
+  for a = -radius, radius do
+    for b = -radius, radius do
+      local c = monster.get_monster_at(a, b)
+      if c and not c:is_safe() then
+        local speed = c:speed_description()
+        if speed == "fast" or
+            speed == "very fast" or
+            speed == "extremely fast" then
+          return c
+        end
+      end
+    end
+  end
+end
 
-:function count_monsters()
-:  local result = 0
-:  for a = -8, 8 do
-:    for b = -8, 8 do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) then
-:        result = result + 1
-:      end
-:    end
-:  end
-:  return result
-:end
+function find_monster(name)
+  for a = -8, 8 do
+    for b = -8, 8 do
+      local c = monster.get_monster_at(a, b)
+      if c and not c.is_safe(c) and c.name(c):find(name) then
+        return c
+      end
+    end
+  end
+end
 
-:function is_angry()
-:  local adjacent = adjusted_threat(1)
-:  local total = adjusted_threat()
-:  -- berserk is used at 75% health against monsters with yellow names
-:  return adjacent >= MEDIUM and total >= MEDIUM * 4 / 3
-:end
+function count_monsters()
+  local result = 0
+  for a = -8, 8 do
+    for b = -8, 8 do
+      local c = monster.get_monster_at(a, b)
+      if c and not c.is_safe(c) then
+        result = result + 1
+      end
+    end
+  end
+  return result
+end
 
-:function can_berserk()
-:  return you.god() == "Trog" and
-:      you.piety_rank() > 0 and
-:      not you.berserk() and
-:      not you.status("berserk cooldown") and
-:      not you.confused() and
-:      not you.silenced() and
-:      not you.mesmerised() and
-:      not you.status("afraid") and
-:      not you.caught()
-:end
+function is_angry()
+  local adjacent = adjusted_threat(1)
+  local total = adjusted_threat()
+  -- berserk is used at 75% health against monsters with yellow names
+  return adjacent >= MEDIUM and total >= MEDIUM * 4 / 3
+end
 
-:function is_scared()
-:  if you.poison_survival() < 1 then
-:    return true
-:  end
-:  if not is_safe() then
-:    if scary_monster_present() then
-:      return true
-:    end
-:    if scary_weapon_present() then
-:      return true
-:    end
-:    if you.status("barbed spikes") or
-:        has_bad_transformation() then
-:      return true
-:    end
-:    if not is_fearless() then
+function can_berserk()
+  return you.god() == "Trog" and
+      you.piety_rank() > 0 and
+      not you.berserk() and
+      not you.status("berserk cooldown") and
+      not you.confused() and
+      not you.silenced() and
+      not you.mesmerised() and
+      not you.status("afraid") and
+      not you.caught()
+end
+
+function is_scared()
+  if you.poison_survival() < 1 then
+    return true
+  end
+  if not is_safe() then
+    if scary_monster_present() then
+      return true
+    end
+    if scary_weapon_present() then
+      return true
+    end
+    if you.status("barbed spikes") or
+        has_bad_transformation() then
+      return true
+    end
+    if not is_fearless() then
        -- experimental
-:      return adjusted_threat() >= NIGHTMARE * 4 / 3 -- IMPOSSIBLE
-:    end
-:  end
-:  return false
-:end
-
-:function is_scary_monster(target)
-:  if has_spell(target, "Symbol of Torment") or
-:      has_spell(target, "Agony Range") or
-:      has_spell(target, "Flay") then
-:    return true
-:  end
-:  local names = {
-:   -- acid
-:   -- electric
-:    "electric eel",
-:    "shock serpent",
-:    -- paralysis
-:    "floating eye",
-:    "dream sheep",
-:    -- torment
-:    -- "lurking horror", -- might not be needed
-:    -- misc
-:    "hydra",
-:    "manticore",
-:    -- summoners
-:    "boggart",
-:    -- smite (flag all smiters like torment?)
-:    "meliai"
-:  }
-:  for _, name in ipairs(names) do
-:    if target.name(target):find(name) then
-:      return true
-:    end
-:  end
-:  return false
-:end
-
-:function scary_monster_present()
-:  return table.getn(scary_monsters()) > 0
-:end
-
-:function scary_monsters()
-:  local result = {}
-:  for a = -8, 8 do
-:    for b = -8, 8 do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) and is_scary_monster(c) then
-:        result[table.getn(result) + 1] = c
-:      end
-:    end
-:  end
-:  return result
-:end
-
-:function print_scary_monsters()
-:  for _, monster in ipairs(scary_monsters()) do
-:    print(monster.name(monster) .. " is dangerous!", 6)
-:  end
-:end
-
-:function has_spell(monster, name)
-:  for _, book in ipairs(monster.spells(monster)) do
-:    for _, spell in ipairs(book) do
-:      if spell:find(name) then
-:        return true
-:      end
-:    end
-:  end
-:  return false
-:end
-
-:function has_electrocution_weapon(monster)
-:  if monster.desc(monster, true):find("of electrocution%.") then
-:    return true
-:  end
-:  return false
-:end
-
-:function has_distortion_weapon(monster)
-:  if monster.desc(monster, true):find("of distortion%.") then
-:    return true
-:  end
-:  return false
-:end
-
-:function scary_weapons()
-:  local result = {}
-:  for a = -8, 8 do
-:    for b = -8, 8 do
-:      local c = monster.get_monster_at(a, b)
-:      if c then
-:        if has_electrocution_weapon(c) then
-:          result[table.getn(result) + 1] = c.name(c) .. " has electrocution!"
-:        end
-:        if has_distortion_weapon(c) then
-:          result[table.getn(result) + 1] = c.name(c) .. " has distortion!"
-:        end      
-:      end
-:    end
-:  end
-:  return result
-:end
-
-:function scary_weapon_present()
-:  return table.getn(scary_weapons()) > 0
-:end
-
-:function print_scary_weapons()
-:  for _, message in ipairs(scary_weapons()) do
-:    print(message, 6)
-:  end
-:end
-
-:function threat(radius)
-:  radius = radius or 8
-:  local result = 0
-:  local invisible_threat = 0
-:  for a = -radius, radius do
-:    for b = -radius, radius do
-:      local x, y = guess_invisible()
-:      if x == a and y == b then
-:        invisible_threat = calculate_invisible_threat()
-:      else
-:        local c = monster.get_monster_at(a, b)
-:        if c and not c.is_safe(c) then
-:          result = result + calculate_threat(c)
-:        end
-:      end
-:    end
-:  end
-:  if is_invisible_monster_present() and
-:      invisible_threat == 0 and
-:      radius == 8 then
-:    result = result + calculate_invisible_threat()
-:  end
-:  return result
-:end
-
-:function adjusted_threat(radius)
-:  local multiplier = 1
-:  if you.slowed() then multiplier = multiplier + 1 end
-:  if you.poisoned() then multiplier = multiplier + 1 end
-:  if you.corrosion() > 0 then multiplier = multiplier + 1 end
-:  return threat(radius) * multiplier * 100 / hp_percent()
-:end
-
-:function danger_percent()
-:  return math.min(adjusted_threat() * 100 / IMPOSSIBLE, 999)
-:end
-
-:function danger_string(value)
-:  if value >= IMPOSSIBLE then return "impossible" end
-:  if value >= NIGHTMARE then return "nightmare" end
-:  if value >= HARD then return "hard" end
-:  if value >= MEDIUM then return "medium" end
-:  if value >= EASY then return "easy" end
-:  if value >= POPCORN then return "popcorn" end
-:  return "safe"
-:end
-
-:function calculate_threat(target)
-:  local hard = {}
-:  -- early game
-:  util.append(hard, {"worm", "gnoll"})
-:  -- mid game
-:  util.append(hard, {"ugly thing"})
-:  -- giants
-:  util.append(hard, {"ogre", "cyclops", "ettin", "titan", "juggernaut"})
-:  -- resistances
-:  if not (you.res_poison() > 0) then
-:    util.append(hard, {"adder"})
-:  end
-:  if not (you.res_shock() > 0) then
-:    util.append(hard, {"sky beast"})
-:  end
-:  if not you.res_corr() then
-:    util.append(hard, {"jelly"})
-:  end
-:  local result = target:threat()
-:  for _, name in ipairs(hard) do
-:    if target:name():find(name) then
-:      result = result + 1
-:    end
-:  end
-:  -- spells
-:  if target:is("berserk") or
-:      has_spell(target, "Smiting") or
-:      has_spell(target, "Petrify") or
-:      has_spell(target, "Petrifying Cloud") or
-:      has_spell(target, "Paralyse") or
-:      has_spell(target, "Paralysis Gaze") then
-:    result = result + 1
-:  end
-:  return 2 ^ result
-:end
-
-:function calculate_invisible_threat()
-:  -- todo: use invisible_monster_name to calcualte threat
-:  if is_invisible_monster_present() then
-:    return HARD
-:  end
-:  return 0
-:end
-
-:function no_visible_monsters_present()
-:  for a = -8, 8 do
-:    for b = -8, 8 do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) then
-:        return false
-:      end
-:    end
-:  end
-:  return true
-:end
-
-:function no_monsters_present()
-:  return no_visible_monsters_present() and
-:      not is_invisible_monster_present()
-:end
-
-:function is_safe()
-:  return you.feel_safe() and not is_invisible_monster_present()
-:end
-
-:function hp_percent()
-:  local a, b = you.hp()
-:  a = you.poison_survival() or a
-:  return 100 * a / b
-:end
-
-:function mp_percent()
-:  local a, b = you.mp()
-:  return 100 * a / b
-:end
-
-:function closest_monster(radius)
-:  radius = radius or 8
-:  local result = nil
-:  local result_distance = radius
-:  local result_threat = 0
-:  for a = -radius, radius do
-:    for b = -radius, radius do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c.is_safe(c) then
-:        local d = distance(c.pos(c))
-:        local threat = calculate_threat(c)
-:        if d < result_distance or
-:            d == result_distance and threat > result_threat then
-:          result = c
-:          result_distance = d
-:          result_threat = threat
-:        end
-:      end
-:    end
-:  end
-:  return result
-:end
-
-:function hit_closest_monster()
-:  local target = closest_monster()
-:  if target then
-:    local x, y = target.pos(target)
-:    if distance(x, y) == 1 then
-:      crawl.sendkeys("*" .. to_key(x, y))
-:      return true
-:    end
-:    return approach(x, y)
-:  end
-:  return false
-:end
-
-:function approach(x, y)
-:  if distance(x, y) == 1 and not traversable(x, y) then
-:    return false
-:  end
-:  for a = -1, 1 do
-:    for b = -1, 1 do
-:      if cartesian_distance(x, y, a, b) < cartesian_distance(x, y)
-:          and traversable(a, b) then
-:        return attempt(to_key(a, b), "approach")
-:      end
-:    end
-:  end
-:  return false
-:end
-
-:function traversable(x, y)
-:  return travel.feature_traversable(view.feature_at(x, y)) and
-:      not monster.get_monster_at(x, y) and
-:      not (view.cloud_at(x, y) == "calcifying dust")
-:end
-
-:function find_invisible(radius)
-:  local radius = radius or 8
-:  for a = -radius, radius do
-:    for b = -radius, radius do
-:      if view.invisible_monster(a, b) then
-:        return a, b
-:      end
-:    end
-:  end
-:end
-
-:function guess_invisible()
-:  if invisible_waypoint_exists then
-:    local x, y = travel.waypoint_delta(0)
-:    return -x, -y
-:  end
-:end
-
-:function is_invisible_monster_present()
-:  return not options.autopick_on or find_invisible()
-:end
-
-:function update_invisible_waypoint()
-:  local x, y = find_invisible()
-:  if x and y then
-:    travel.set_waypoint(0, x, y)
-:    invisible_waypoint_exists = true
-:  end
-:end
-
-:function avoid_dangerous_clouds()
-:  local cloud = view.cloud_at(0, 0)
-:  -- handles catoblepas
-:  if cloud == "calcifying dust" then
-:    local target = closest_monster()
-:    if not target then
-:      return attempt_mini_explore()
-:    end
-:    return approach(closest_adjacent_traversable(target:pos()))
-:  end
-:  return true
-:end
-
-:function closest_adjacent_traversable(x, y)
-:  local adjacent = {}
-:  for a = -1, 1 do
-:    for b = -1, 1 do
-:      if not (a == 0 and b == 0) and traversable(a, b) then
-:        local cell = point(a, b)
-:        adjacent[table.getn(adjacent) + 1] = cell
-:      end
-:    end
-:  end
-:  if table.getn(adjacent) > 0 then
-:    table.sort(adjacent, function(p0, p1)
-:      return distance(p0.x, p0.y, x, y) < distance(p1.x, p1.y, x, y)
-:    end)
-:    return adjacent[1].x, adjacent[1].y
-:  end
-:end
-
-############################################################################
-# complex combat                                                           #
-############################################################################
-
-# todo
-
-############################################################################
-# escaping                                                                 #
-############################################################################
-
-:function is_escaping()
-:  return escape_plan().mode > -1
-:end
-
-:function attempt_mini_escape()
-:  -- does not avoid bumping into monsters
-:  if view.feature_at(0, 0) == "exit_dungeon" then
-:    return false
-:  end
-:  if is_up_stairs(0, 0) then
-:    return attempt("<", "escape")
-:  end
-:  return attempt("X<." .. ESCAPE_KEY, "escape")
-:end
-
-:function stop_escaping()
-:  if is_escaping() then
-:    c_persist.escape_plans[you.branch() .. you.depth()] = nil
-:    clear_exclusions()
-:  end
-:end
-
-:function start_escaping()
-:  if not is_escaping() then
-:    escape_plan().mode = 0
-:  end
-:end
-
-:function escape()
-:  local plan = escape_plan()
-:  print("EXECUTING ESCAPE STEP " .. plan.mode, 6)
-:  if plan.mode == 0 then
-:    exclude_monsters()
-:    plan.mode = plan.mode + 1
-:    return true
-:  end
-:  if plan.mode == 1 then
-:    plan.turns = you.turns()
-:    local cells = all_adjacent_up_stairs()
-:    if table.getn(cells) == 0 then
-:      attempt_mini_escape()
-:    else
-:      local cell = any_traversable(cells)
-:      if cell then
-:        crawl.sendkeys(to_key(cell.x, cell.y))
-:      end
-:    end
-:    plan.mode = plan.mode + 1
-:    return true
-:  end
-:  if plan.mode == 2 then
-:    clear_exclusions()
-:    plan.mode = plan.mode + 1
-:    return true
-:  end
-:  if plan.mode == 3 then
-:    if plan.turns == you.turns() then
-:      return false
-:    end
-:    plan.mode = 0
-:    return true
-:  end
-:end
-
-:function escape_plan()
-:  local key = you.branch() .. you.depth()
-:  if not c_persist.escape_plans[key] then
-:    c_persist.escape_plans[key] = {
-:      branch = you.branch(),
-:      depth = you.depth(),
-:      turns = you.turns(),
-:      mode = -1
-:    }
-:  end
-:  return c_persist.escape_plans[key]
-:end
-
-:function exclude_monsters()
-:  for a = -8, 8 do
-:    for b = -8, 8 do
-:      local c = monster.get_monster_at(a, b)
-:      if c then
-:        travel.set_exclude(c:x_pos(), c:y_pos(), 0)
-:      end
-:    end
-:  end
-:end
-
-:function clear_exclusions()
-:  crawl.sendkeys("X" .. control("e") .. ESCAPE_KEY)
-:end
-
-:function any_traversable(cells)
-:  for _, cell in ipairs(cells) do
-:    if traversable(cell.x, cell.y) then
-:      return cell
-:    end
-:  end
-:end
-
-:function all_adjacent_up_stairs()
-:  local adjacent = {}
-:  for a = -1, 1 do
-:    for b = -1, 1 do
-:      if not (a == 0 and b == 0) and is_up_stairs(a, b) then
-:        adjacent[table.getn(adjacent) + 1] = point(a, b)
-:      end
-:    end
-:  end
-:  return adjacent
-:end
-
-############################################################################
-# item dropping                                                            #
-############################################################################
-
-:function drop(item)
-:  local letter = items.index_to_letter(item.slot)
-:  crawl.sendkeys("d" .. letter .. ENTER_KEY)
-:end
-
-:function can_drop_if_burdened(item)
-:  if item.class(true) == "wand" and
-:      not (item.subtype() == "digging") then
-:    for other in inventory() do
-:      -- keep if there is a worse wand that can be dropped instead
-:      if other.class(true) == "wand" and
-:          wand_level(other) < wand_level(item) then
-:        return false
-:      end
-:    end
-:    return true
-:  end
-:  return false
-:end
-
-:function drop_junk()
-:  for item in inventory() do
-:    if is_junk(item) then
-:      if not (item.cursed and item.equipped) then
-:        drop(item)
-:        return true
-:      end
-:    end
-:  end
-:  return false
-:end
-
-:function is_junk_weapon(item)
-:  if item.class(true) == "weapon" then
-:    if not uses_weapon_skill(item) or god_hates(item) then
-:      return true
-:    end
-:    for other in inventory() do
-:      if not god_hates(other) and compare_weapons(item, other) < 0 then
-:        return true
-:      end
-:    end
-:  end
-:  return false
-:end
-
-:function god_hates(item)
-:  if you.god() == "Trog" and item:ego() == "pain" then
-:    return true
-:  end
-:  return false
-:end
-
-:function is_junk_armour(item)
-:  if is_scales(item) then
-:    return false
-:  end
-:  if item:ego() == "harm" then
-:    return true
-:  end
-:  if item.class(true) == "armour" then
-:    for other in inventory() do
-:      if compare_armour(item, other) < 0 then
-:        return true
-:      end
-:    end
-:  end
-:  return false
-:end
-
-:function is_junk_amulet(item)
-:  if is_amulet(item) then
-:    if item.subtype() == "amulet of inaccuracy" then
-:      return true
-:    end
-:    if item.equipped and is_faith_bound() then
-:      return false
-:    end
-:    for other in inventory() do
-:      if compare_amulets(item, other) < 0 then
-:        return true
-:      end
-:    end
-:  end
-:  return false
-:end
-
-:function is_junk_ring(item)
-:  if is_ring(item) then
-:    if item.subtype() == "ring of teleportation" or
-:        item.subtype() == "ring of attention" then
-:      return true
-:    end
-:    if item.plus and item.plus < 0 then
-:      return true
-:    end
-:  end
-:  return false
-:end
-
-:function is_dangerous(item)
-:  if is_ring(item) then
-:    return item.subtype() == "ring of fire" or
-:        item.subtype() == "ring of ice"
-:  end
-:  if is_scales(item) then
-:    return item:name():find("fire dragon scales") or
-:        item:name():find("ice dragon scales")
-:  end
-:  return false
-:end
-
-:function is_junk(item)
-:  if item.artefact then
-:    return false
-:  end
-:  if is_junk_weapon(item) or
-:      is_junk_armour(item) or
-:      is_junk_amulet(item) or
-:      is_junk_ring(item) or
-:      is_unneeded_duplicate(item) then
-:    return true
-:  end
-:  if burdened() and can_drop_if_burdened(item) then
-:    return true
-:  end
-:  local junk_subtypes = {
-:    --"brilliance",
-:    --"holy word",
-:    --"silence",
-:    "attraction",
-:    "degeneration",
-:    "lignification",
-:    "immolation",
-:    "noise",
-:    "random uselessness",
-:    "torment",
-:    "vulnerability"
-:  }
-:  for _, subtype in ipairs(junk_subtypes) do
-:    if item.subtype() == subtype then 
-:      return true
-:    end
-:  end
-:  return false
-:end
-
-############################################################################
-# autopickup                                                               #
-############################################################################
-
-:function is_unneeded_duplicate(item)
-:  if item.artefact or
-:      item.equipped or
-:      item.class(true) == "missile" or
-:      item.class(true) == "potion" or
-:      item.class(true) == "scroll" then
-:    return false
-:  end
-:  for other in inventory() do
-:    if not (item.slot == other.slot) and
-:        other:name() == item:name() and
-:        item:ego() == other:ego() and
-:        (item.plus or 0) == (other.plus or 0) then
-:      return true
-:    end
-:  end
-:  return false
-:end
-
-:function want_weapon(item)
-:  if item.subtype() == "hand axe" and not item.fully_identified then
-:    -- avoids early cursed hand axes
-:    return false
-:  end
-:  if item.class(true) == "weapon" then
-:    local best = best_damage(item.weap_skill)
-:    if item.damage > best then
-:      return true
-:    end
-:    if item.damage == best then
-:      return item.branded
-:    end
-:  end
-:  return false
-:end
-
-:function want_armour(item)
-:  if is_scales(item) then
-:    return true
-:  end
-:  if item.class(true) == "armour" then
-:    local best = best_ac(item.subtype())
-:    if item.ac > best then
-:      return true
-:    end
-:    if item.subtype() == "helmet" or
-:        item.subtype() == "cloak" or
-:        item.subtype() == "gloves" or
-:        item.subtype() == "boots" then
-:      return item.branded
-:    end
-:  end
-:  return false
-:end
-
-:function best_armour_to_enchant()
-:  -- todo: handle shields
-:  -- todo: handle body armours
-:  local boots = items.equipped_at("Boots")
-:  if boots and (boots.plus or 0) < 2 and not boots.artefact then
-:    return boots
-:  end
-:  local gloves = items.equipped_at("Gloves")
-:  if gloves and (gloves.plus or 0) < 2 and not gloves.artefact then
-:    return gloves
-:  end
-:  local helmet = items.equipped_at("Helmet")
-:  if helmet and (helmet.plus or 0) < 2 and not helmet.artefact then
-:    return helmet
-:  end
-:  local cloak = items.equipped_at("Cloak")
-:  if cloak and cloak.ac > 0
-:      and (cloak.plus or 0) < 2 and
-:      not cloak.artefact then
-:    return cloak
-:  end
-:  local body = items.equipped_at("Armour")
-:  if body and (body.plus or 0) < 2 and not body.artefact then
-:    return body
-:  end
-:  -- local shield = items.equipped_at("Shield")
-:end
-
-:function want_book(item)
-:  return item.class(true) == "book" and not item.is_useless
-:end
-
-:function autopickup(item, name)
-:  if is_unneeded_duplicate(item) or
-:      is_slot_missing(item) or
-:      is_junk(item) then
-:    return false
-:  end
-:  if item.artefact then
-:    return true
-:  end
-:  if want_book(item) then
-:    return true
-:  end
-:  if want_weapon(item) then
-:    return true
-:  end
-:  if want_armour(item) then
-:    return true
-:  end
-:end
-
-:add_autopickup_func(autopickup)
-
-############################################################################
-# curse removal                                                            #
-############################################################################
-
-:function scroll_of_remove_curse_letter()
-:  for item in inventory() do
-:    if item.class(true) == "scroll" and
-:        item.subtype() == "remove curse" then
-:      return items.index_to_letter(item.slot)
-:    end
-:  end
-:end
-
-:function remove_curse()
-:  local rc_letter = scroll_of_remove_curse_letter()
-:  if rc_letter then
-:    for item in inventory() do
-:      if item.cursed and item.equipped then
-:        return read_scroll(rc_letter)
-:      end
-:    end
-:  end
-:  return false
-:end
-
-############################################################################
-# item identification                                                      #
-############################################################################
-
-:function scroll_of_identify_letter()
-:  for item in inventory() do
-:    if item.class(true) == "scroll" and item.subtype() == "identify" then
-:      return items.index_to_letter(item.slot)
-:    end
-:  end
-:end
-
-:function scroll_of_blinking_letter()
-:  for item in inventory() do
-:    if item.class(true) == "scroll" and item.subtype() == "blinking" then
-:      return items.index_to_letter(item.slot)
-:    end
-:  end
-:end
-
-:function want_to_identify_with_scroll(item)
-:  if not item.fully_identified and not item.artefact then
-:    if is_faith_equipped() and is_amulet(item) then
-:      return true
-:    end
-:    if item.class(true) == "potion" then
-:      return true
-:    end
-:    if item.class(true) == "scroll" and
-:        scroll_of_identify_quantity() > 5 then
-:      return true
-:    end
-:  end
-:  return false
-:end
-
-:function want_to_use_scroll_of_identify()
-:  for item in inventory() do
-:    if want_to_identify_with_scroll(item) then
-:      return true
-:    end
-:  end
-:  return false
-:end
-
-:function scroll_of_identify_quantity()
-:  for item in inventory() do
-:    if item.class(true) == "scroll" and item.subtype() == "identify" then
-:      return item.quantity
-:    end
-:  end
-:  return 0
-:end
-
-:function identify_items()
-:  local id_letter = scroll_of_identify_letter() 
-:  for item in inventory() do
-:    if item.class(true) == "scroll" and
-:        not item.fully_identified and
-:        item.quantity > 1 and
-:        (id_letter or want_to_use_scroll_of_identify()) then
-:      return read_scroll(items.index_to_letter(item.slot))
-:    end
-:  end
-:  if id_letter then
-:    for item in inventory() do
-:      if want_to_identify_with_scroll(item) then
-:        return read_scroll(id_letter .. items.index_to_letter(item.slot))
-:      end
-:    end
-:  end
-:  return false
-:end
-
-############################################################################
-# item utility                                                             #
-############################################################################
-
-:function inventory()
-:  return iter.invent_iterator:new(items.inventory())
-:end
-
-:function burdened()
-:  return table.getn(items.inventory()) > 47
-:end
-
-:function read_scroll(letter)
-:  if you.silenced() then
-:    return false
-:  end
-:  crawl.sendkeys("r" .. letter)
-:  return true
-:end
-
-############################################################################
-# equipment utility                                                        #
-############################################################################
-
-:function uses_weapon_skill(item)
-:  return item.class(true) == "weapon" and item.weap_skill == "Axes"
-:end
-
-:function is_amulet(item)
-:  if item.class(true) == "jewellery" then
-:    return item.name():find("amulet") or item.name():find("necklace")
-:  end
-:  return false
-:end
-
-:function is_ring(item)
-:  if item.class(true) == "jewellery" then
-:    return item.name():find("ring")
-:  end
-:  return false
-:end
-
-:function is_scales(item)
-:  return item.name():find("scales")
-:end
-
-:function compare_amulets(left, right)
-:  -- todo: handle artefacts
-:  if left.artefact or right.artefact then
-:    return 0
-:  end
-:  if not is_amulet(left) or not is_amulet(right) then
-:    return 0
-:  end
-:  if not left.fully_identified or not right.fully_identified then
-:    return 0
-:  end
-:  return compare(amulet_level(left), amulet_level(right))
-:end
-
-:function amulet_level(amulet)
-:  if amulet.subtype() == "amulet of regeneration" then
-:    return 6
-:  end
-:  if amulet.subtype() == "amulet of guardian spirit" then
-:    return 5
-:  end
-:  if amulet.subtype() == "amulet of faith" then
-:    return 4
-:  end
-:  if amulet.subtype() == "amulet of the acrobat" then
-:    return 3
-:  end
-:  if amulet.subtype() == "amulet of reflection" then
-:    return 2
-:  end
-:  if amulet.subtype() == "amulet of magic regeneration" then
-:    return 1
-:  end
-:  return 0
-:end
-
-:function compare_rings(left, right)
-:  -- todo: handle artefacts
-:  if left.artefact or right.artefact then
-:    return 0
-:  end
-:  if not is_ring(left) or not is_ring(right) then
-:    return 0
-:  end
-:  if not left.fully_identified or not right.fully_identified then
-:    return 0
-:  end
-:  return compare(ring_level(left), ring_level(right))
-:end
-
-:function ring_level(ring)
-:  -- todo: add better ring logic
-:  if ring.subtype() == "ring of see invisible" then
-:    return 0
-:  end
-:  if ring.subtype() == "ring of poison resistance" then
-:    return 0
-:  end
-:  if ring.subtype() == "ring of protection from fire" then
-:    return 0
-:  end
-:  if ring.subtype() == "ring of protection from cold" then
-:    return 0
-:  end
-:  if ring.subtype() == "ring of resist corrosion" then
-:    return 0
-:  end
-:  if ring.subtype() == "ring of positive energy" then
-:    return 0
-:  end
-:  if ring.subtype() == "ring of slaying" then
-:    return 7
-:  end
-:  if ring.subtype() == "ring of protection" then
-:    return 6
-:  end
-:  if ring.subtype() == "ring of evasion" then
-:    return 5
-:  end
-:  if ring.subtype() == "ring of willpower" then
-:    return 4
-:  end
-:  if ring.subtype() == "ring of stealth" then
-:    return 3
-:  end
-:  if ring.subtype() == "ring of strength" then
-:    return 2
-:  end
-:  if ring.subtype() == "ring of dexterity" then
-:    return 1
-:  end
-:  -- flight, magical power, wizardry, intelligence, fire, ice
-:  return 0
-:end
-
-:function wand_level(wand)
-:  if wand.subtype() == "digging" then
-:    return 9
-:  end
-:  if wand.subtype() == "acid" then
-:    return 8
-:  end
-:  if wand.subtype() == "iceblast" then
-:    return 7
-:  end
-:  if wand.subtype() == "paralysis" then
-:    return 6
-:  end
-:  if wand.subtype() == "enslavement" then
-:    return 5
-:  end
-:  if wand.subtype() == "disintegration" then
-:    return 4
-:  end
-:  if wand.subtype() == "flame" then
-:    return 3
-:  end
-:  if wand.subtype() == "polymorph" then
-:    return 2
-:  end
-:  if wand.subtype() == "random effects" then
-:    return 1
-:  end
-:  return 0
-:end
-
-:function helmet_level(item)
-:  if item:ego() == "see invisible" then
-:    return 2
-:  end
-:  if item:ego() == "willpower" then
-:    return 1
-:  end
-:  -- don't care about intelligence
-:  if item:ego() == "intelligence" then
-:    return 0
-:  end
-:  -- don't care about other brands
-:  return 0
-:end
-
-:function cloak_level(item)
-:  if item:ego() == "resistance" then
-:    return 5
-:  end
-:  if item:ego() == "poison resistance" then
-:    return 4
-:  end
-:  if item:ego() == "preservation" then
-:    return 4
-:  end
-:  if item:ego() == "fire resistance" then
-:    return 4
-:  end
-:  if item:ego() == "cold resistance" then
-:    return 4
-:  end
-:  if item:ego() == "repulsion" then
-:    return 3
-:  end
-:  if item:ego() == "willpower" then
-:    return 2
-:  end
-:  if item:ego() == "stealth" then
-:    return 1
-:  end
-:  -- don't care about invisibility
-:  if item:ego() == "invisibility" then
-:    return 0
-:  end
-:  -- harm is junk
-:  if item:ego() == "harm" then
-:    return -1
-:  end
-:  -- don't care about other brands
-:  return 0
-:end
-
-:function boots_level(item)
-:  if item:ego() == "running" then
-:    return 3
-:  end
-:  if item:ego() == "flying" then
-:    return 2
-:  end
-:  if item:ego() == "stealth" then
-:    return 1
-:  end
-:  -- don't care about other brands
-:  return 0
-:end
-
-:function gloves_level(item)
-:  if item:ego() == "strength" then
-:    return 2
-:  end
-:  if item:ego() == "dexterity" then
-:    return 1
-:  end
-:  -- don't care about archery
-:  if item:ego() == "archery" then
-:    return 0
-:  end
-:  -- don't care about other brands
-:  return 0
-:end
-
-:function body_level(item)
-:  if item:name():find("gold dragon scales") then
-:    return 1
-:  end
-:  if item:name():find("storm dragon scales") then
-:    return 1
-:  end
-:  if item:name():find("shadow dragon scales") then
-:    return 1
-:  end
-:  if item:name():find("pearl dragon scales") then
-:    return 1
-:  end
-:  -- fire and ice scales are dangerous
-:  if item:name():find("fire dragon scales") then
-:    return -1
-:  end
-:  if item:name():find("ice dragon scales") then
-:    return -1
-:  end
-:  -- don't care about other types
-:  return 0
-:end
-
-:function is_faith_equipped()
-:  local amulet = items.equipped_at("Amulet")
-:  return amulet and amulet.subtype() == "amulet of faith"
-:end
-
-:function is_faith_bound()
-:  return is_faith_equipped() and you.piety_rank() < 6
-:end
-
-:function equip_ring(item, letter)
-:  if is_ring(item) then
-:    if is_ring_missing() then
-:      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
-:      return true
-:    end
-:    local left = items.equipped_at("Left Ring")
-:    local right = items.equipped_at("Right Ring")
-:    if left.cursed and right.cursed then
-:      return false
-:    end
-:    if left.cursed or right.cursed then
-:      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
-:      return true
-:    end
-:    if left.subtype() == right.subtype() and left.plus == right.plus then
-:      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
-:      return true
-:    end
-:    if compare_rings(left, right) > 0 then
-:      letter = letter or ">"
-:    else
-:      letter = letter or "<"
-:    end
-:    crawl.sendkeys("P" .. items.index_to_letter(item.slot) .. letter)
-:    return true
-:  end
-:  return false
-:end
-
-:function is_ring_missing()
-:  local left = items.equipped_at("Left Ring")
-:  local right = items.equipped_at("Right Ring")
-:  return not left or not right
-:end
-
-:function equipped_at(subtype)
-:  local translations = {
-:    cloak = "Cloak",
-:    helmet = "Helmet",
-:    gloves = "Gloves",
-:    boots = "Boots",
-:    body = "Armour",
-:    shield = "Shield"
-:  }
-:  return items.equipped_at(translations[subtype])
-:end
-
-:function is_slot_missing(item)
-:  if item.class(true) == "armour" then
-:    return item.subtype() == "shield" or item.name():find("barding")
-:  end
-:  return false
-:end
-
-:function upgrade_equipment()
-:  for item in inventory() do
-:    if not item.equipped and
-:        not item.artefact and
-:        not is_dangerous(item) and
-:        not is_slot_missing(item) and
-:        not is_junk(item) then
-:      if item.class(true) == "weapon" then
-:        local equipped = items.equipped_at("Weapon")
-:        if not equipped or
-:            not item.fully_identified or
-:            compare_weapons(item, equipped) > 0 then
-:          if not (equipped and equipped.cursed) and
-:              item.wield() then
-:            return true
-:          end
-:        end
-:      end
-:      if item.class(true) == "armour" then
-:        local equipped = equipped_at(item.subtype())
-:        if not equipped or
-:            not item.fully_identified or
-:            compare_armour(item, equipped) > 0 then
-:          if not (equipped and equipped.cursed) and
-:              item.wear() then
-:            return true
-:          end
-:        end
-:      end
-:      if is_amulet(item) then
-:        local equipped = items.equipped_at("Amulet")
-:        if not equipped or
-:            not item.fully_identified and not is_faith_equipped() or
-:            compare_amulets(item, equipped) > 0 then
-:          if not (equipped and equipped.cursed)
-:              and not is_faith_bound() then
-:            crawl.sendkeys("P" .. items.index_to_letter(item.slot))
-:            return true
-:          end
-:        end
-:      end
-:      -- rings are not fully supported yet
-:      if is_ring(item) then
-:        if is_ring_missing() or
-:            not item.fully_identified then
-:          if not item.equipped and
-:              equip_ring(item) then
-:            return true
-:          end
-:        end
-:        local left = items.equipped_at("Left Ring")
-:        if not (left and left.cursed) and
-:            compare_rings(item, left) > 0 and
-:            equip_ring(item) then
-:          return true
-:        end
-:        local right = items.equipped_at("Right Ring")
-:        if not (right and right.cursed) and
-:            compare_rings(item, right) > 0 and
-:            equip_ring(item) then
-:          return true
-:        end
-:      end
-:    end
-:  end
-:  return false
-:end
-
-:function remove_dangerous_rings()
-:  for item in inventory() do
-:    if item.equipped and
-:        not item.cursed and
-:        is_ring(item) and
-:        is_dangerous(item) then
-:      if item.remove() then
-:        return true
-:      end
-:    end
-:  end
-:  return false
-:end
-
-############################################################################
-# weapon and armour utility                                                #
-############################################################################
-
-:function compare_weapons(left, right)
-:  -- todo: handle artefacts
-:  if left.artefact or right.artefact then
-:    return 0
-:  end
-:  if left.is_useless or right.is_useless then
-:    return 0
-:  end
-:  if not left.class(true) == "weapon" or
-:      not right.class(true) == "weapon" then
-:    return 0
-:  end
-:  if not (left.weap_skill == right.weap_skill) then
-:    return 0
-:  end
-:  if not left.fully_identified or not right.fully_identified then
-:    return 0
-:  end
-:  local result = compare(left.damage, right.damage)
-:  if not (result == 0) then
-:    return result
-:  end
-:  result = compare(weapon_brand_level(left:ego()),
-:      weapon_brand_level(right:ego()))
-:  if not (result == 0) then
-:    return result
-:  end
-:  return compare(left.plus or 0, right.plus or 0)
-:end
-
-:function weapon_brand_level(brand)
-:  local extended = false
-:  if brand == "holy wrath" then
-:    if extended then
-:      return 9
-:    end
-:    return 0
-:  end
-:  if brand == "vampirism" then
-:    if extended then
-:      return 0
-:    end
-:    return 9
-:  end
-:  if brand == "electrocution" then
-:    return 8
-:  end
-:  if brand == "flaming" then
-:    return 7
-:  end
-:  if brand == "freezing" then
-:    return 6
-:  end
-:  if brand == "draining" then
-:    return 5
-:  end
-:  if brand == "venom" then
-:    return 4
-:  end
-:  if brand == "vorpality" then
-:    return 3
-:  end
-:  if brand == "protection" then
-:    return 2
-:  end
-:  if brand == "antimagic" then
-:    return 1
-:  end
-:  if not brand then
-:    return 0
-:  end
-:  if brand == "chaos" then
-:    return -1
-:  end
-:  if brand == "distortion" then
-:    return -2
-:  end
-:  if brand == "pain" then
-:    return -3
-:  end
-:  -- unknown brands
-:  return -4
-:end
-
-:function compare_armour(left, right)
-:  -- todo: handle artefacts
-:  if left.artefact or right.artefact then
-:    return 0
-:  end
-:  if left.is_useless or right.is_useless then
-:    return 0
-:  end
-:  if not left.class(true) == "armour" or
-:      not right.class(true) == "armour" then
-:    return 0
-:  end
-:  if not (left.subtype() == right.subtype()) then
-:    return 0
-:  end
-:  if not left.fully_identified or not right.fully_identified then
-:    return 0
-:  end
-:  result = 0
-:  if left.subtype() == "body" then
-:    result = compare(body_level(left), body_level(right))
-:  elseif left.subtype() == "helmet" then
-:    result = compare(helmet_level(left), helmet_level(right))
-:  elseif left.subtype() == "cloak" then
-:    result = compare(cloak_level(left), cloak_level(right))
-:  elseif left.subtype() == "gloves" then
-:    result = compare(boots_level(left), boots_level(right))
-:  elseif left.subtype() == "boots" then
-:    result = compare(gloves_level(left), gloves_level(right))
-:  end
-:  if not (result == 0) then
-:    return result
-:  end
-:  return compare(left.ac + (left.plus or 0), right.ac + (right.plus or 0))
-:end
-
-:function best_damage(weap_skill)
-:  local result = 0
-:  for item in inventory() do
-:    if item.weap_skill == weap_skill and item.damage > result then
-:      result = item.damage
-:    end
-:  end
-:  return result
-:end
-
-:function best_ac(subtype)
-:  local result = 0
-:  for item in inventory() do
-:    if item.subtype() == subtype and item.ac > result then
-:      result = item.ac
-:    end
-:  end
-:  return result
-:end
-
-############################################################################
-# general utility                                                          #
-############################################################################
-
-:function print(value, channel)
-:  crawl.mpr(tostring(value), channel)
-:end
-
-:function compare(left, right)
-:  if left < right then
-:    return -1
-:  end
-:  if left > right then
-:    return 1
-:  end
-:  return 0
-:end
-
-:function to_key(x, y)
-:  local translations = {
-:    [1] = "b",
-:    [2] = "j",
-:    [3] = "n",
-:    [4] = "h",
-:    [5] = "s",
-:    [6] = "l",
-:    [7] = "y",
-:    [8] = "k",
-:    [9] = "u"
-:  }
-:  return translations[5 + x - 3 * y]
-:end
-
-:function clamp(value, min, max)
-:  if value < min then
-:    return min
-:  end
-:  if value > max then
-:    return max
-:  end
-:  return value
-:end
-
-:function distance(x0, y0, x1, y1)
-:  return math.max(math.abs(x0 - (x1 or 0)), math.abs(y0 - (y1 or 0)))
-:end
-
-:function cartesian_distance(x0, y0, x1, y1)
-:  return math.sqrt((x0 - (x1 or 0)) ^ 2 + (y0 - (y1 or 0)) ^ 2)
-:end
-
-:function control(letter)
-:  return string.char(string.byte(letter) - string.byte("a") + 1)
-:end
-
-:function point(a, b)
-:  return {x = a, y = b}
-:end
-
-:function append_element(t, a)
-:  t[length(t) + 1] = a
-:end
-
-:function length(t)
-:  return table.getn(t)
-:end
-
-############################################################################
-# hooks                                                                    #
-############################################################################
-
-:function c_answer_prompt(prompt)
-:  if prompt:find("Keep equipping") then
-:    return true
-:  end
-:  if prompt:find("Keep disrobing") then
-:    return false
-:  end
-:  if prompt:find("Really walk") then
-:    return true
-:  end
-:  if prompt:find("Really attack") then
-:    stop_running()
-:    return false
-:  end
-:  if prompt:find("Really unwield") or
-:      prompt:find("Really take off") or
-:      prompt:find("Really remove") or
-:      prompt:find("Really wield") or
-:      prompt:find("Really wear") or
-:      prompt:find("Really put on") then
-:    return true
-:  end
-:end
-
-:function c_message(text, channel)
-:  if channel == "error" then
-:    stop_running()
-:    return
-:  end
-:  if text:find("would you want") or
-:      text:find("too confused") then
-:    stop_running()
-:    return
-:  end
-:  if text:find("explore") or text:find("exploring") then
-:    if you.depth() == cleared_depth() + 1 then
-:      c_persist.cleared_depth[you.branch()] = you.depth()
-:    end
-:    return
-:  end
-:  if text:find("reachable target") then
-:    no_reachable_target = true
-:    return
-:  end
-:  if text:find("There is an entrance") and
-:      view.feature_at(0, 0) == "enter_shop" then
-:    crawl.sendkeys(ESCAPE_KEY)
-:    return
-:  end
-:  -- item identification
-:  if text:find("is a scroll of identify") then
-:    for item in inventory() do
-:      if want_to_identify_with_scroll(item) then
-:        crawl.sendkeys(items.index_to_letter(item.slot))
-:        return
-:      end
-:    end
-:    return
-:  end
-:  if text:find("is a scroll of enchant weapon") then
-:    local equipped = items.equipped_at("Weapon")
-:    if equipped and not equipped.artefact then
-:      if (equipped.plus or 0) < 9 then
-:        crawl.sendkeys(items.index_to_letter(equipped.slot))
-:        return
-:      end
-:    end
-:    return
-:  end
-:  if text:find("is a scroll of enchant armour") then
-:    local equipped = best_armour_to_enchant()
-:    if equipped then
-:      crawl.sendkeys(items.index_to_letter(equipped.slot))
-:    end
-:    return
-:  end
-:  if text:find("Blink to where?") then
-:    if not scroll_of_blinking_letter() then
-:      crawl.sendkeys("fy")
-:    end
-:    return
-:  end
-:  -- invisible monsters
-:  if text:find("the .* flickers and vanishes") then
-:    local _, _, match = text:find("the (.*) flickers and vanishes")
-:    invisible_monster_name = match
-:    return
-:  end
-:  if text:find(".* flickers and vanishes") then
-:    local _, _, match = text:find("(.*) flickers and vanishes")
-:    invisible_monster_name = match
-:    return
-:  end
-:  if text:find("the .* flickers out of sight") then
-:    local _, _, match = text:find("the (.*) flickers out of sight")
-:    invisible_monster_name = match
-:    return
-:  end
-:  if text:find("Reactivating autopickup") then
-:    invisible_monster_name = nil
-:    invisible_waypoint_exists = false
-:    return
-:  end
-:end
-
-:function choose_stat_gain()
-:  return "i"
-:end
-
-############################################################################
-# debug                                                                    #
-############################################################################
+      return adjusted_threat() >= NIGHTMARE * 4 / 3 -- IMPOSSIBLE
+    end
+  end
+  return false
+end
+
+function is_scary_monster(target)
+  if has_spell(target, "Symbol of Torment") or
+      has_spell(target, "Agony Range") or
+      has_spell(target, "Flay") then
+    return true
+  end
+  local names = {
+    "electric eel",
+    "shock serpent",
+	"floating eye",
+	"dream sheep",
+	"lurking horror",
+	"hydra",
+	"manticore",
+	"boggart",
+    "meliai"}
+  for _, name in ipairs(names) do
+    if target.name(target):find(name) then
+      return true
+    end
+  end
+  return false
+end
+
+function scary_monster_present()
+  return table.getn(scary_monsters()) > 0
+end
+
+function scary_monsters()
+  local result = {}
+  for a = -8, 8 do
+    for b = -8, 8 do
+      local c = monster.get_monster_at(a, b)
+      if c and not c.is_safe(c) and is_scary_monster(c) then
+        result[table.getn(result) + 1] = c
+      end
+    end
+  end
+  return result
+end
+
+function print_scary_monsters()
+  for _, monster in ipairs(scary_monsters()) do
+    print(monster.name(monster) .. " is dangerous!", 6)
+  end
+end
+
+function has_spell(monster, name)
+  for _, book in ipairs(monster.spells(monster)) do
+    for _, spell in ipairs(book) do
+      if spell:find(name) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function has_electrocution_weapon(monster)
+  if monster.desc(monster, true):find("of electrocution%.") then
+    return true
+  end
+  return false
+end
+
+function has_distortion_weapon(monster)
+  if monster.desc(monster, true):find("of distortion%.") then
+    return true
+  end
+  return false
+end
+
+function scary_weapons()
+  local result = {}
+  for a = -8, 8 do
+    for b = -8, 8 do
+      local c = monster.get_monster_at(a, b)
+      if c then
+        if has_electrocution_weapon(c) then
+          result[table.getn(result) + 1] = c.name(c) .. " has electrocution!"
+        end
+        if has_distortion_weapon(c) then
+          result[table.getn(result) + 1] = c.name(c) .. " has distortion!"
+        end      
+      end
+    end
+  end
+  return result
+end
+
+function scary_weapon_present()
+  return table.getn(scary_weapons()) > 0
+end
+
+function print_scary_weapons()
+  for _, message in ipairs(scary_weapons()) do
+    print(message, 6)
+  end
+end
+
+function threat(radius)
+  radius = radius or 8
+  local result = 0
+  local invisible_threat = 0
+  for a = -radius, radius do
+    for b = -radius, radius do
+      local x, y = guess_invisible()
+      if x == a and y == b then
+        invisible_threat = calculate_invisible_threat()
+      else
+        local c = monster.get_monster_at(a, b)
+        if c and not c.is_safe(c) then
+          result = result + calculate_threat(c)
+        end
+      end
+    end
+  end
+  if is_invisible_monster_present() and
+      invisible_threat == 0 and
+      radius == 8 then
+    result = result + calculate_invisible_threat()
+  end
+  return result
+end
+
+function adjusted_threat(radius)
+  local multiplier = 1
+  if you.slowed() then multiplier = multiplier + 1 end
+  if you.poisoned() then multiplier = multiplier + 1 end
+  if you.corrosion() > 0 then multiplier = multiplier + 1 end
+  return threat(radius) * multiplier * 100 / hp_percent()
+end
+
+function danger_percent()
+  return math.min(adjusted_threat() * 100 / IMPOSSIBLE, 999)
+end
+
+function danger_string(value)
+  if value >= IMPOSSIBLE then return "impossible" end
+  if value >= NIGHTMARE then return "nightmare" end
+  if value >= HARD then return "hard" end
+  if value >= MEDIUM then return "medium" end
+  if value >= EASY then return "easy" end
+  if value >= POPCORN then return "popcorn" end
+  return "safe"
+end
+
+function calculate_threat(target)
+  local hard = {}
+  -- early game
+  util.append(hard, {"worm", "gnoll"})
+  -- mid game
+  util.append(hard, {"ugly thing"})
+  -- giants
+  util.append(hard, {"ogre", "cyclops", "ettin", "titan", "juggernaut"})
+  -- resistances
+  if not (you.res_poison() > 0) then
+    util.append(hard, {"adder"})
+  end
+  if not (you.res_shock() > 0) then
+    util.append(hard, {"sky beast"})
+  end
+  if not you.res_corr() then
+    util.append(hard, {"jelly"})
+  end
+  local result = target:threat()
+  for _, name in ipairs(hard) do
+    if target:name():find(name) then
+      result = result + 1
+    end
+  end
+  -- spells
+  if target:is("berserk") or
+      has_spell(target, "Smiting") or
+      has_spell(target, "Petrify") or
+      has_spell(target, "Petrifying Cloud") or
+      has_spell(target, "Paralyse") or
+      has_spell(target, "Paralysis Gaze") then
+    result = result + 1
+  end
+  return 2 ^ result
+end
+
+function calculate_invisible_threat()
+  -- todo: use invisible_monster_name to calcualte threat
+  if is_invisible_monster_present() then
+    return HARD
+  end
+  return 0
+end
+
+function no_visible_monsters_present()
+  for a = -8, 8 do
+    for b = -8, 8 do
+      local c = monster.get_monster_at(a, b)
+      if c and not c.is_safe(c) then
+        return false
+      end
+    end
+  end
+  return true
+end
+
+function no_monsters_present()
+  return no_visible_monsters_present() and
+      not is_invisible_monster_present()
+end
+
+function is_safe()
+  return you.feel_safe() and not is_invisible_monster_present()
+end
+
+function hp_percent()
+  local a, b = you.hp()
+  a = you.poison_survival() or a
+  return 100 * a / b
+end
+
+function mp_percent()
+  local a, b = you.mp()
+  return 100 * a / b
+end
+
+function closest_monster(radius)
+  radius = radius or 8
+  local result = nil
+  local result_distance = radius
+  local result_threat = 0
+  for a = -radius, radius do
+    for b = -radius, radius do
+      local c = monster.get_monster_at(a, b)
+      if c and not c.is_safe(c) then
+        local d = distance(c.pos(c))
+        local threat = calculate_threat(c)
+        if d < result_distance or
+            d == result_distance and threat > result_threat then
+          result = c
+          result_distance = d
+          result_threat = threat
+        end
+      end
+    end
+  end
+  return result
+end
+
+function hit_closest_monster()
+  local target = closest_monster()
+  if target then
+    local x, y = target.pos(target)
+    if distance(x, y) == 1 then
+      crawl.sendkeys("*" .. to_key(x, y))
+      return true
+    end
+    return approach(x, y)
+  end
+  return false
+end
+
+function approach(x, y)
+  if distance(x, y) == 1 and not traversable(x, y) then
+    return false
+  end
+  for a = -1, 1 do
+    for b = -1, 1 do
+      if cartesian_distance(x, y, a, b) < cartesian_distance(x, y)
+          and traversable(a, b) then
+        return attempt(to_key(a, b), "approach")
+      end
+    end
+  end
+  return false
+end
+
+function traversable(x, y)
+  return travel.feature_traversable(view.feature_at(x, y)) and
+      not monster.get_monster_at(x, y) and
+      not (view.cloud_at(x, y) == "calcifying dust")
+end
+
+function find_invisible(radius)
+  local radius = radius or 8
+  for a = -radius, radius do
+    for b = -radius, radius do
+      if view.invisible_monster(a, b) then
+        return a, b
+      end
+    end
+  end
+end
+
+function guess_invisible()
+  if invisible_waypoint_exists then
+    local x, y = travel.waypoint_delta(0)
+    return -x, -y
+  end
+end
+
+function is_invisible_monster_present()
+  return not options.autopick_on or find_invisible()
+end
+
+function update_invisible_waypoint()
+  local x, y = find_invisible()
+  if x and y then
+    travel.set_waypoint(0, x, y)
+    invisible_waypoint_exists = true
+  end
+end
+
+function avoid_dangerous_clouds()
+  local cloud = view.cloud_at(0, 0)
+  -- handles catoblepas
+  if cloud == "calcifying dust" then
+    local target = closest_monster()
+    if not target then
+      return attempt_mini_explore()
+    end
+    return approach(closest_adjacent_traversable(target:pos()))
+  end
+  return true
+end
+
+function closest_adjacent_traversable(x, y)
+  local adjacent = {}
+  for a = -1, 1 do
+    for b = -1, 1 do
+      if not (a == 0 and b == 0) and traversable(a, b) then
+        local cell = point(a, b)
+        adjacent[table.getn(adjacent) + 1] = cell
+      end
+    end
+  end
+  if table.getn(adjacent) > 0 then
+    table.sort(adjacent, function(p0, p1)
+      return distance(p0.x, p0.y, x, y) < distance(p1.x, p1.y, x, y)
+    end)
+    return adjacent[1].x, adjacent[1].y
+  end
+end
+
+--############################################################################
+--# complex combat                                                           #
+--############################################################################
+
+-- todo
+
+--############################################################################
+--# escaping                                                                 #
+--############################################################################
+
+function is_escaping()
+  return escape_plan().mode > -1
+end
+
+function attempt_mini_escape()
+  -- does not avoid bumping into monsters
+  if view.feature_at(0, 0) == "exit_dungeon" then
+    return false
+  end
+  if is_up_stairs(0, 0) then
+    return attempt("<", "escape")
+  end
+  return attempt("X<." .. ESCAPE_KEY, "escape")
+end
+
+function stop_escaping()
+  if is_escaping() then
+    c_persist.escape_plans[you.branch() .. you.depth()] = nil
+    clear_exclusions()
+  end
+end
+
+function start_escaping()
+  if not is_escaping() then
+    escape_plan().mode = 0
+  end
+end
+
+function escape()
+  local plan = escape_plan()
+  print("EXECUTING ESCAPE STEP " .. plan.mode, 6)
+  if plan.mode == 0 then
+    exclude_monsters()
+    plan.mode = plan.mode + 1
+    return true
+  end
+  if plan.mode == 1 then
+    plan.turns = you.turns()
+    local cells = all_adjacent_up_stairs()
+    if table.getn(cells) == 0 then
+      attempt_mini_escape()
+    else
+      local cell = any_traversable(cells)
+      if cell then
+        crawl.sendkeys(to_key(cell.x, cell.y))
+      end
+    end
+    plan.mode = plan.mode + 1
+    return true
+  end
+  if plan.mode == 2 then
+    clear_exclusions()
+    plan.mode = plan.mode + 1
+    return true
+  end
+  if plan.mode == 3 then
+    if plan.turns == you.turns() then
+      return false
+    end
+    plan.mode = 0
+    return true
+  end
+end
+
+function escape_plan()
+  local key = you.branch() .. you.depth()
+  if not c_persist.escape_plans[key] then
+    c_persist.escape_plans[key] = {
+      branch = you.branch(),
+      depth = you.depth(),
+      turns = you.turns(),
+      mode = -1}
+  end
+  return c_persist.escape_plans[key]
+end
+
+function exclude_monsters()
+  for a = -8, 8 do
+    for b = -8, 8 do
+      local c = monster.get_monster_at(a, b)
+      if c then
+        travel.set_exclude(c:x_pos(), c:y_pos(), 0)
+      end
+    end
+  end
+end
+
+function clear_exclusions()
+  crawl.sendkeys("X" .. control("e") .. ESCAPE_KEY)
+end
+
+function any_traversable(cells)
+  for _, cell in ipairs(cells) do
+    if traversable(cell.x, cell.y) then
+      return cell
+    end
+  end
+end
+
+function all_adjacent_up_stairs()
+  local adjacent = {}
+  for a = -1, 1 do
+    for b = -1, 1 do
+      if not (a == 0 and b == 0) and is_up_stairs(a, b) then
+        adjacent[table.getn(adjacent) + 1] = point(a, b)
+      end
+    end
+  end
+  return adjacent
+end
+
+--############################################################################
+--# item dropping                                                            #
+--############################################################################
+
+function drop(item)
+  local letter = items.index_to_letter(item.slot)
+  crawl.sendkeys("d" .. letter .. ENTER_KEY)
+end
+
+function can_drop_if_burdened(item)
+  if item.class(true) == "wand" and
+      not (item.subtype() == "digging") then
+    for other in inventory() do
+      -- keep if there is a worse wand that can be dropped instead
+      if other.class(true) == "wand" and
+          wand_level(other) < wand_level(item) then
+        return false
+      end
+    end
+    return true
+  end
+  return false
+end
+
+function drop_junk()
+  for item in inventory() do
+    if is_junk(item) then
+      if not (item.cursed and item.equipped) then
+        drop(item)
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function is_junk_weapon(item)
+  if item.class(true) == "weapon" then
+    if not uses_weapon_skill(item) or god_hates(item) then
+      return true
+    end
+    for other in inventory() do
+      if not god_hates(other) and compare_weapons(item, other) < 0 then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function god_hates(item)
+  if you.god() == "Trog" and item:ego() == "pain" then
+    return true
+  end
+  return false
+end
+
+function is_junk_armour(item)
+  if is_scales(item) then
+    return false
+  end
+  if item:ego() == "harm" then
+    return true
+  end
+  if item.class(true) == "armour" then
+    for other in inventory() do
+      if compare_armour(item, other) < 0 then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function is_junk_amulet(item)
+  if is_amulet(item) then
+    if item.subtype() == "amulet of inaccuracy" then
+      return true
+    end
+    if item.equipped and is_faith_bound() then
+      return false
+    end
+    for other in inventory() do
+      if compare_amulets(item, other) < 0 then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function is_junk_ring(item)
+  if is_ring(item) then
+    if item.subtype() == "ring of teleportation" or
+        item.subtype() == "ring of attention" then
+      return true
+    end
+    if item.plus and item.plus < 0 then
+      return true
+    end
+  end
+  return false
+end
+
+function is_dangerous(item)
+  if is_ring(item) then
+    return item.subtype() == "ring of fire" or
+        item.subtype() == "ring of ice"
+  end
+  if is_scales(item) then
+    return item:name():find("fire dragon scales") or
+        item:name():find("ice dragon scales")
+  end
+  return false
+end
+
+function is_junk(item)
+  if item.artefact then
+    return false
+  end
+  if is_junk_weapon(item) or
+      is_junk_armour(item) or
+      is_junk_amulet(item) or
+      is_junk_ring(item) or
+      is_unneeded_duplicate(item) then
+    return true
+  end
+  if burdened() and can_drop_if_burdened(item) then
+    return true
+  end
+  local junk_subtypes = {
+    --"brilliance",
+    --"holy word",
+    --"silence",
+    "attraction",
+    "degeneration",
+    "lignification",
+    "immolation",
+    "noise",
+    "random uselessness",
+    "torment",
+    "vulnerability"}
+  for _, subtype in ipairs(junk_subtypes) do
+    if item.subtype() == subtype then 
+      return true
+    end
+  end
+  return false
+end
+
+--############################################################################
+--# autopickup                                                               #
+--############################################################################
+
+function is_unneeded_duplicate(item)
+  if item.artefact or
+      item.equipped or
+      item.class(true) == "missile" or
+      item.class(true) == "potion" or
+      item.class(true) == "scroll" then
+    return false
+  end
+  for other in inventory() do
+    if not (item.slot == other.slot) and
+        other:name() == item:name() and
+        item:ego() == other:ego() and
+        (item.plus or 0) == (other.plus or 0) then
+      return true
+    end
+  end
+  return false
+end
+
+function want_weapon(item)
+  if item.subtype() == "hand axe" and not item.fully_identified then
+    -- avoids early cursed hand axes
+    return false
+  end
+  if item.class(true) == "weapon" then
+    local best = best_damage(item.weap_skill)
+    if item.damage > best then
+      return true
+    end
+    if item.damage == best then
+      return item.branded
+    end
+  end
+  return false
+end
+
+function want_armour(item)
+  if is_scales(item) then
+    return true
+  end
+  if item.class(true) == "armour" then
+    local best = best_ac(item.subtype())
+    if item.ac > best then
+      return true
+    end
+    if item.subtype() == "helmet" or
+        item.subtype() == "cloak" or
+        item.subtype() == "gloves" or
+        item.subtype() == "boots" then
+      return item.branded
+    end
+  end
+  return false
+end
+
+function best_armour_to_enchant()
+  -- todo: handle shields
+  -- todo: handle body armours
+  local boots = items.equipped_at("Boots")
+  if boots and (boots.plus or 0) < 2 and not boots.artefact then
+    return boots
+  end
+  local gloves = items.equipped_at("Gloves")
+  if gloves and (gloves.plus or 0) < 2 and not gloves.artefact then
+    return gloves
+  end
+  local helmet = items.equipped_at("Helmet")
+  if helmet and (helmet.plus or 0) < 2 and not helmet.artefact then
+    return helmet
+  end
+  local cloak = items.equipped_at("Cloak")
+  if cloak and cloak.ac > 0
+      and (cloak.plus or 0) < 2 and
+      not cloak.artefact then
+    return cloak
+  end
+  local body = items.equipped_at("Armour")
+  if body and (body.plus or 0) < 2 and not body.artefact then
+    return body
+  end
+  -- local shield = items.equipped_at("Shield")
+end
+
+function want_book(item)
+  return item.class(true) == "book" and not item.is_useless
+end
+
+function autopickup(item, name)
+  if is_unneeded_duplicate(item) or
+      is_slot_missing(item) or
+      is_junk(item) then
+    return false
+  end
+  if item.artefact then
+    return true
+  end
+  if want_book(item) then
+    return true
+  end
+  if want_weapon(item) then
+    return true
+  end
+  if want_armour(item) then
+    return true
+  end
+end
+
+add_autopickup_func(autopickup)
+
+--############################################################################
+--# curse removal                                                            #
+--############################################################################
+
+function scroll_of_remove_curse_letter()
+  for item in inventory() do
+    if item.class(true) == "scroll" and
+        item.subtype() == "remove curse" then
+      return items.index_to_letter(item.slot)
+    end
+  end
+end
+
+function remove_curse()
+  local rc_letter = scroll_of_remove_curse_letter()
+  if rc_letter then
+    for item in inventory() do
+      if item.cursed and item.equipped then
+        return read_scroll(rc_letter)
+      end
+    end
+  end
+  return false
+end
+
+--############################################################################
+--# item identification                                                      #
+--############################################################################
+
+function scroll_of_identify_letter()
+  for item in inventory() do
+    if item.class(true) == "scroll" and item.subtype() == "identify" then
+      return items.index_to_letter(item.slot)
+    end
+  end
+end
+
+function scroll_of_blinking_letter()
+  for item in inventory() do
+    if item.class(true) == "scroll" and item.subtype() == "blinking" then
+      return items.index_to_letter(item.slot)
+    end
+  end
+end
+
+function want_to_identify_with_scroll(item)
+  if not item.fully_identified and not item.artefact then
+    if is_faith_equipped() and is_amulet(item) then
+      return true
+    end
+    if item.class(true) == "potion" then
+      return true
+    end
+    if item.class(true) == "scroll" and
+        scroll_of_identify_quantity() > 5 then
+      return true
+    end
+  end
+  return false
+end
+
+function want_to_use_scroll_of_identify()
+  for item in inventory() do
+    if want_to_identify_with_scroll(item) then
+      return true
+    end
+  end
+  return false
+end
+
+function scroll_of_identify_quantity()
+  for item in inventory() do
+    if item.class(true) == "scroll" and item.subtype() == "identify" then
+      return item.quantity
+    end
+  end
+  return 0
+end
+
+function identify_items()
+  local id_letter = scroll_of_identify_letter() 
+  for item in inventory() do
+    if item.class(true) == "scroll" and
+        not item.fully_identified and
+        item.quantity > 1 and
+        (id_letter or want_to_use_scroll_of_identify()) then
+      return read_scroll(items.index_to_letter(item.slot))
+    end
+  end
+  if id_letter then
+    for item in inventory() do
+      if want_to_identify_with_scroll(item) then
+        return read_scroll(id_letter .. items.index_to_letter(item.slot))
+      end
+    end
+  end
+  return false
+end
+
+--############################################################################
+--# item utility                                                             #
+--############################################################################
+
+function inventory()
+  return iter.invent_iterator:new(items.inventory())
+end
+
+function burdened()
+  return table.getn(items.inventory()) > 47
+end
+
+function read_scroll(letter)
+  if you.silenced() then
+    return false
+  end
+  crawl.sendkeys("r" .. letter)
+  return true
+end
+
+--############################################################################
+--# equipment utility                                                        #
+--############################################################################
+
+function uses_weapon_skill(item)
+  return item.class(true) == "weapon" and item.weap_skill == "Axes"
+end
+
+function is_amulet(item)
+  if item.class(true) == "jewellery" then
+    return item.name():find("amulet") or item.name():find("necklace")
+  end
+  return false
+end
+
+function is_ring(item)
+  if item.class(true) == "jewellery" then
+    return item.name():find("ring")
+  end
+  return false
+end
+
+function is_scales(item)
+  return item.name():find("scales")
+end
+
+function compare_amulets(left, right)
+  -- todo: handle artefacts
+  if left.artefact or right.artefact then
+    return 0
+  end
+  if not is_amulet(left) or not is_amulet(right) then
+    return 0
+  end
+  if not left.fully_identified or not right.fully_identified then
+    return 0
+  end
+  return compare(amulet_level(left), amulet_level(right))
+end
+
+function amulet_level(amulet)
+  if amulet.subtype() == "amulet of regeneration" then
+    return 6
+  end
+  if amulet.subtype() == "amulet of guardian spirit" then
+    return 5
+  end
+  if amulet.subtype() == "amulet of faith" then
+    return 4
+  end
+  if amulet.subtype() == "amulet of the acrobat" then
+    return 3
+  end
+  if amulet.subtype() == "amulet of reflection" then
+    return 2
+  end
+  if amulet.subtype() == "amulet of magic regeneration" then
+    return 1
+  end
+  return 0
+end
+
+function compare_rings(left, right)
+  -- todo: handle artefacts
+  if left.artefact or right.artefact then
+    return 0
+  end
+  if not is_ring(left) or not is_ring(right) then
+    return 0
+  end
+  if not left.fully_identified or not right.fully_identified then
+    return 0
+  end
+  return compare(ring_level(left), ring_level(right))
+end
+
+function ring_level(ring)
+  -- todo: add better ring logic
+  if ring.subtype() == "ring of see invisible" then
+    return 0
+  end
+  if ring.subtype() == "ring of poison resistance" then
+    return 0
+  end
+  if ring.subtype() == "ring of protection from fire" then
+    return 0
+  end
+  if ring.subtype() == "ring of protection from cold" then
+    return 0
+  end
+  if ring.subtype() == "ring of resist corrosion" then
+    return 0
+  end
+  if ring.subtype() == "ring of positive energy" then
+    return 0
+  end
+  if ring.subtype() == "ring of slaying" then
+    return 7
+  end
+  if ring.subtype() == "ring of protection" then
+    return 6
+  end
+  if ring.subtype() == "ring of evasion" then
+    return 5
+  end
+  if ring.subtype() == "ring of willpower" then
+    return 4
+  end
+  if ring.subtype() == "ring of stealth" then
+    return 3
+  end
+  if ring.subtype() == "ring of strength" then
+    return 2
+  end
+  if ring.subtype() == "ring of dexterity" then
+    return 1
+  end
+  -- flight, magical power, wizardry, intelligence, fire, ice
+  return 0
+end
+
+function wand_level(wand)
+  if wand.subtype() == "digging" then
+    return 9
+  end
+  if wand.subtype() == "acid" then
+    return 8
+  end
+  if wand.subtype() == "iceblast" then
+    return 7
+  end
+  if wand.subtype() == "paralysis" then
+    return 6
+  end
+  if wand.subtype() == "enslavement" then
+    return 5
+  end
+  if wand.subtype() == "disintegration" then
+    return 4
+  end
+  if wand.subtype() == "flame" then
+    return 3
+  end
+  if wand.subtype() == "polymorph" then
+    return 2
+  end
+  if wand.subtype() == "random effects" then
+    return 1
+  end
+  return 0
+end
+
+function helmet_level(item)
+  if item:ego() == "see invisible" then
+    return 2
+  end
+  if item:ego() == "willpower" then
+    return 1
+  end
+  -- don't care about intelligence
+  if item:ego() == "intelligence" then
+    return 0
+  end
+  -- don't care about other brands
+  return 0
+end
+
+function cloak_level(item)
+  if item:ego() == "resistance" then
+    return 5
+  end
+  if item:ego() == "poison resistance" then
+    return 4
+  end
+  if item:ego() == "preservation" then
+    return 4
+  end
+  if item:ego() == "fire resistance" then
+    return 4
+  end
+  if item:ego() == "cold resistance" then
+    return 4
+  end
+  if item:ego() == "repulsion" then
+    return 3
+  end
+  if item:ego() == "willpower" then
+    return 2
+  end
+  if item:ego() == "stealth" then
+    return 1
+  end
+  -- don't care about invisibility
+  if item:ego() == "invisibility" then
+    return 0
+  end
+  -- harm is junk
+  if item:ego() == "harm" then
+    return -1
+  end
+  -- don't care about other brands
+  return 0
+end
+
+function boots_level(item)
+  if item:ego() == "running" then
+    return 3
+  end
+  if item:ego() == "flying" then
+    return 2
+  end
+  if item:ego() == "stealth" then
+    return 1
+  end
+  -- don't care about other brands
+  return 0
+end
+
+function gloves_level(item)
+  if item:ego() == "strength" then
+    return 2
+  end
+  if item:ego() == "dexterity" then
+    return 1
+  end
+  -- don't care about archery
+  if item:ego() == "archery" then
+    return 0
+  end
+  -- don't care about other brands
+  return 0
+end
+
+function body_level(item)
+  if item:name():find("gold dragon scales") then
+    return 1
+  end
+  if item:name():find("storm dragon scales") then
+    return 1
+  end
+  if item:name():find("shadow dragon scales") then
+    return 1
+  end
+  if item:name():find("pearl dragon scales") then
+    return 1
+  end
+  -- fire and ice scales are dangerous
+  if item:name():find("fire dragon scales") then
+    return -1
+  end
+  if item:name():find("ice dragon scales") then
+    return -1
+  end
+  -- don't care about other types
+  return 0
+end
+
+function is_faith_equipped()
+  local amulet = items.equipped_at("Amulet")
+  return amulet and amulet.subtype() == "amulet of faith"
+end
+
+function is_faith_bound()
+  return is_faith_equipped() and you.piety_rank() < 6
+end
+
+function equip_ring(item, letter)
+  if is_ring(item) and not item.equipped then
+    if is_ring_missing() then
+      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
+      return true
+    end
+    local left = items.equipped_at("Left Ring")
+    local right = items.equipped_at("Right Ring")
+    if left.cursed and right.cursed then
+      return false
+    end
+    if left.cursed or right.cursed then
+      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
+      return true
+    end
+    if left.subtype() == right.subtype() and left.plus == right.plus then
+      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
+      return true
+    end
+    if compare_rings(left, right) > 0 then
+      letter = letter or ">"
+    else
+      letter = letter or "<"
+    end
+    crawl.sendkeys("P" .. items.index_to_letter(item.slot) .. letter)
+    return true
+  end
+  return false
+end
+
+function is_ring_missing()
+  return not items.equipped_at("Left Ring") or not items.equipped_at("Right Ring")
+end
+
+function equipped_at(subtype)
+  local translations = {
+    cloak = "Cloak",
+    helmet = "Helmet",
+    gloves = "Gloves",
+    boots = "Boots",
+    body = "Armour",
+    shield = "Shield"}
+  return items.equipped_at(translations[subtype])
+end
+
+function is_slot_missing(item)
+  if item.class(true) == "armour" then
+    return item.subtype() == "shield" or item.name():find("barding")
+  end
+  return false
+end
+
+function upgrade_equipment()
+  for item in inventory() do
+    if not item.equipped and
+        not item.artefact and
+        not is_dangerous(item) and
+        not is_slot_missing(item) and
+        not is_junk(item) then
+      if item.class(true) == "weapon" then
+        local equipped = items.equipped_at("Weapon")
+        if not equipped or
+            not item.fully_identified or
+            compare_weapons(item, equipped) > 0 then
+          if not (equipped and equipped.cursed) and
+              item.wield() then
+            return true
+          end
+        end
+      end
+      if item.class(true) == "armour" then
+        local equipped = equipped_at(item.subtype())
+        if not equipped or
+            not item.fully_identified or
+            compare_armour(item, equipped) > 0 then
+          if not (equipped and equipped.cursed) and
+              item.wear() then
+            return true
+          end
+        end
+      end
+      if is_amulet(item) then
+        local equipped = items.equipped_at("Amulet")
+        if not equipped or
+            not item.fully_identified and not is_faith_equipped() or
+            compare_amulets(item, equipped) > 0 then
+          if not (equipped and equipped.cursed)
+              and not is_faith_bound() then
+            crawl.sendkeys("P" .. items.index_to_letter(item.slot))
+            return true
+          end
+        end
+      end
+      -- rings are not fully supported yet
+      if is_ring(item) then
+        if is_ring_missing() or
+            not item.fully_identified then
+          if equip_ring(item) then
+            return true
+          end
+        end
+        local left = items.equipped_at("Left Ring")
+        if not (left and left.cursed) and
+            compare_rings(item, left) > 0 and
+            equip_ring(item) then
+          return true
+        end
+        local right = items.equipped_at("Right Ring")
+        if not (right and right.cursed) and
+            compare_rings(item, right) > 0 and
+            equip_ring(item) then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+function remove_dangerous_rings()
+  for item in inventory() do
+    if item.equipped and
+        not item.cursed and
+        is_ring(item) and
+        is_dangerous(item) then
+      if item.remove() then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+--############################################################################
+--# weapon and armour utility                                                #
+--############################################################################
+
+function compare_weapons(left, right)
+  -- todo: handle artefacts
+  if left.artefact or right.artefact then
+    return 0
+  end
+  if left.is_useless or right.is_useless then
+    return 0
+  end
+  if not left.class(true) == "weapon" or
+      not right.class(true) == "weapon" then
+    return 0
+  end
+  if not (left.weap_skill == right.weap_skill) then
+    return 0
+  end
+  if not left.fully_identified or not right.fully_identified then
+    return 0
+  end
+  local result = compare(left.damage, right.damage)
+  if not (result == 0) then
+    return result
+  end
+  result = compare(weapon_brand_level(left:ego()),
+      weapon_brand_level(right:ego()))
+  if not (result == 0) then
+    return result
+  end
+  return compare(left.plus or 0, right.plus or 0)
+end
+
+function weapon_brand_level(brand)
+  local extended = false
+  if brand == "holy wrath" then
+    if extended then
+      return 9
+    end
+    return 0
+  end
+  if brand == "vampirism" then
+    if extended then
+      return 0
+    end
+    return 9
+  end
+  if brand == "electrocution" then
+    return 8
+  end
+  if brand == "flaming" then
+    return 7
+  end
+  if brand == "freezing" then
+    return 6
+  end
+  if brand == "draining" then
+    return 5
+  end
+  if brand == "venom" then
+    return 4
+  end
+  if brand == "vorpality" then
+    return 3
+  end
+  if brand == "protection" then
+    return 2
+  end
+  if brand == "antimagic" then
+    return 1
+  end
+  if not brand then
+    return 0
+  end
+  if brand == "chaos" then
+    return -1
+  end
+  if brand == "distortion" then
+    return -2
+  end
+  if brand == "pain" then
+    return -3
+  end
+  -- unknown brands
+  return -4
+end
+
+function compare_armour(left, right)
+  -- todo: handle artefacts
+  if left.artefact or right.artefact then
+    return 0
+  end
+  if left.is_useless or right.is_useless then
+    return 0
+  end
+  if not left.class(true) == "armour" or
+      not right.class(true) == "armour" then
+    return 0
+  end
+  if not (left.subtype() == right.subtype()) then
+    return 0
+  end
+  if not left.fully_identified or not right.fully_identified then
+    return 0
+  end
+  result = 0
+  if left.subtype() == "body" then
+    result = compare(body_level(left), body_level(right))
+  elseif left.subtype() == "helmet" then
+    result = compare(helmet_level(left), helmet_level(right))
+  elseif left.subtype() == "cloak" then
+    result = compare(cloak_level(left), cloak_level(right))
+  elseif left.subtype() == "gloves" then
+    result = compare(boots_level(left), boots_level(right))
+  elseif left.subtype() == "boots" then
+    result = compare(gloves_level(left), gloves_level(right))
+  end
+  if not (result == 0) then
+    return result
+  end
+  return compare(left.ac + (left.plus or 0), right.ac + (right.plus or 0))
+end
+
+function best_damage(weap_skill)
+  local result = 0
+  for item in inventory() do
+    if item.weap_skill == weap_skill and item.damage > result then
+      result = item.damage
+    end
+  end
+  return result
+end
+
+function best_ac(subtype)
+  local result = 0
+  for item in inventory() do
+    if item.subtype() == subtype and item.ac > result then
+      result = item.ac
+    end
+  end
+  return result
+end
+
+--############################################################################
+--# general utility                                                          #
+--############################################################################
+
+function print(value, channel)
+  crawl.mpr(tostring(value), channel)
+end
+
+function compare(left, right)
+  if left < right then
+    return -1
+  end
+  if left > right then
+    return 1
+  end
+  return 0
+end
+
+function to_key(x, y)
+  local translations = {
+    [1] = "b",
+    [2] = "j",
+    [3] = "n",
+    [4] = "h",
+    [5] = "s",
+    [6] = "l",
+    [7] = "y",
+    [8] = "k",
+    [9] = "u"}
+  return translations[5 + x - 3 * y]
+end
+
+function clamp(value, min, max)
+  if value < min then
+    return min
+  end
+  if value > max then
+    return max
+  end
+  return value
+end
+
+function distance(x0, y0, x1, y1)
+  return math.max(math.abs(x0 - (x1 or 0)), math.abs(y0 - (y1 or 0)))
+end
+
+function cartesian_distance(x0, y0, x1, y1)
+  return math.sqrt((x0 - (x1 or 0)) ^ 2 + (y0 - (y1 or 0)) ^ 2)
+end
+
+function control(letter)
+  return string.char(string.byte(letter) - string.byte("a") + 1)
+end
+
+function point(a, b)
+  return {x = a, y = b}
+end
+
+function append_element(t, a)
+  t[length(t) + 1] = a
+end
+
+function length(t)
+  return table.getn(t)
+end
+
+--############################################################################
+--# hooks                                                                    #
+--############################################################################
+
+function c_answer_prompt(prompt)
+  if prompt:find("Keep equipping") then
+    return true
+  end
+  if prompt:find("Keep disrobing") then
+    return false
+  end
+  if prompt:find("Really walk") then
+    return true
+  end
+  if prompt:find("Really attack") then
+    stop_running()
+    return false
+  end
+  if prompt:find("Really unwield") or
+      prompt:find("Really take off") or
+      prompt:find("Really remove") or
+      prompt:find("Really wield") or
+      prompt:find("Really wear") or
+      prompt:find("Really put on") then
+    return true
+  end
+end
+
+function c_message(text, channel)
+  if channel == "error" then
+    stop_running()
+    return
+  end
+  if text:find("would you want") or
+      text:find("too confused") then
+    stop_running()
+    return
+  end
+  if text:find("explore") or text:find("exploring") then
+    if you.depth() == cleared_depth() + 1 then
+      c_persist.cleared_depth[you.branch()] = you.depth()
+    end
+    return
+  end
+  if text:find("reachable target") then
+    no_reachable_target = true
+    return
+  end
+  if text:find("There is an entrance") and
+      view.feature_at(0, 0) == "enter_shop" then
+    crawl.sendkeys(ESCAPE_KEY)
+    return
+  end
+  -- item identification
+  if text:find("is a scroll of identify") then
+    for item in inventory() do
+      if want_to_identify_with_scroll(item) then
+        crawl.sendkeys(items.index_to_letter(item.slot))
+        return
+      end
+    end
+    return
+  end
+  if text:find("is a scroll of enchant weapon") then
+    local equipped = items.equipped_at("Weapon")
+    if equipped and not equipped.artefact then
+      if (equipped.plus or 0) < 9 then
+        crawl.sendkeys(items.index_to_letter(equipped.slot))
+        return
+      end
+    end
+    return
+  end
+  if text:find("is a scroll of enchant armour") then
+    local equipped = best_armour_to_enchant()
+    if equipped then
+      crawl.sendkeys(items.index_to_letter(equipped.slot))
+    end
+    return
+  end
+  if text:find("Blink to where?") then
+    if not scroll_of_blinking_letter() then
+      crawl.sendkeys("fy")
+    end
+    return
+  end
+  -- invisible monsters
+  if text:find("the .* flickers and vanishes") then
+    local _, _, match = text:find("the (.*) flickers and vanishes")
+    invisible_monster_name = match
+    return
+  end
+  if text:find(".* flickers and vanishes") then
+    local _, _, match = text:find("(.*) flickers and vanishes")
+    invisible_monster_name = match
+    return
+  end
+  if text:find("the .* flickers out of sight") then
+    local _, _, match = text:find("the (.*) flickers out of sight")
+    invisible_monster_name = match
+    return
+  end
+  if text:find("Reactivating autopickup") then
+    invisible_monster_name = nil
+    invisible_waypoint_exists = false
+    return
+  end
+end
+
+function choose_stat_gain()
+  return "i"
+end
+
+--############################################################################
+--# debug                                                                    #
+--############################################################################
+
+function debug_escape()
+  if is_up_stairs(0, 0) then
+    print("ON STAIRS!")
+    return
+  end
+  if not is_escaping() then
+    start_escaping()
+  end
+  step()
+end
+
+function debug()
+  print(you.regenerating())
+end
+
+function foo()
+  radius = 8
+  for a = -radius, radius do
+    for b = -radius, radius do
+      local c = monster.get_monster_at(a, b)
+      if c and not c:is_safe() then
+        if c:has_known_ranged_attack() then
+          return c
+        end
+      end
+    end
+  end
+end
+
+}
 
 macros += M c ===debug
 macros += M 0 ===debug_escape
-
-:function debug_escape()
-:  if is_up_stairs(0, 0) then
-:    print("ON STAIRS!")
-:    return
-:  end
-:  if not is_escaping() then
-:    start_escaping()
-:  end
-:  step()
-:end
-
-:function debug()
-:  print(you.regenerating())
-:end
-
-:function foo()
-:  radius = 8
-:  for a = -radius, radius do
-:    for b = -radius, radius do
-:      local c = monster.get_monster_at(a, b)
-:      if c and not c:is_safe() then
-:        if c:has_known_ranged_attack() then
-:          return c
-:        end
-:      end
-:    end
-:  end
-:end

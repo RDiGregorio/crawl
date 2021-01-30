@@ -179,7 +179,7 @@ function housekeeping()
       stop_escaping()
       return false
     end
-    if not (escape_plan().mode == 0) then
+    if escape_plan().mode ~= 0 then
       escape()
     end
     return false
@@ -888,7 +888,7 @@ end
 function traversable(x, y)
   return travel.feature_traversable(view.feature_at(x, y)) and
       not monster.get_monster_at(x, y) and
-      not (view.cloud_at(x, y) == "calcifying dust")
+      view.cloud_at(x, y) ~= "calcifying dust"
 end
 
 function find_invisible(radius)
@@ -1084,11 +1084,10 @@ end
 
 function can_drop_if_burdened(item)
   if item.class(true) == "wand" and
-      not (item.subtype() == "digging") then
+      item.subtype() ~= "digging" then
     for other in inventory() do
       -- keep if there is a worse wand that can be dropped instead
-      if other.class(true) == "wand" and
-          wand_level(other) < wand_level(item) then
+      if other.class(true) == "wand" and wand_level(other) < wand_level(item) then
         return false
       end
     end
@@ -1236,7 +1235,7 @@ function is_unneeded_duplicate(item)
     return false
   end
   for other in inventory() do
-    if not (item.slot == other.slot) and
+    if item.slot ~= other.slot and
         other:name() == item:name() and
         item:ego() == other:ego() and
         (item.plus or 0) == (other.plus or 0) then
@@ -1866,25 +1865,19 @@ function compare_weapons(left, right)
   if left.is_useless or right.is_useless then
     return 0
   end
-  if not left.class(true) == "weapon" or
-      not right.class(true) == "weapon" then
+  if left.class(true) ~= "weapon" or right.class(true) ~= "weapon" then
     return 0
   end
-  if not (left.weap_skill == right.weap_skill) then
+  if left.weap_skill ~= right.weap_skill then
     return 0
   end
   if not left.fully_identified or not right.fully_identified then
     return 0
   end
   local result = compare(left.damage, right.damage)
-  if not (result == 0) then
-    return result
-  end
-  result = compare(weapon_brand_level(left:ego()),
-      weapon_brand_level(right:ego()))
-  if not (result == 0) then
-    return result
-  end
+  if result ~= 0 then return result end
+  result = compare(weapon_brand_level(left:ego()), weapon_brand_level(right:ego()))
+  if result ~= 0 then return result end
   return compare(left.plus or 0, right.plus or 0)
 end
 
@@ -1954,7 +1947,7 @@ function compare_armour(left, right)
       not right.class(true) == "armour" then
     return 0
   end
-  if not (left.subtype() == right.subtype()) then
+  if left.subtype() ~= right.subtype() then
     return 0
   end
   if not left.fully_identified or not right.fully_identified then

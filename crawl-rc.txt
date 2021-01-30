@@ -11,6 +11,7 @@
 # prevent running if some fast mobs are adjacent?
 
 # escape logic needs a LOT of work
+# can macro the escape key to get around paralysis force more
 
 ############################################################################
 # options                                                                  #
@@ -572,6 +573,8 @@ macros += M 5 ===wait
 :      you.piety_rank() > 0 and
 :      not you.berserk() and
 :      not you.status("berserk cooldown") and
+:      not you.confused() and
+:      not you.silenced() and
 :      not you.mesmerised() and
 :      not you.status("afraid") and
 :      not you.caught()
@@ -2200,7 +2203,7 @@ macros += M 0 ===debug_escape
 :end
 
 :function debug()
-:  print(foo())
+:  print(you.regenerating())
 :end
 
 :function foo()

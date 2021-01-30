@@ -368,11 +368,13 @@ end
 
 function is_up_stairs(x, y)
   local feature = view.feature_at(x, y)
+
   if feature then
     return feature:find("stone_stairs_up") or
         feature:find("escape_hatch_up") or
         feature:find("exit")
   end
+
   return false
 end
 
@@ -1011,43 +1013,23 @@ function start_escaping()
 end
 
 function escape()
+  if view.feature_at(0, 0) == "exit_dungeon" then
+    return false
+  end
 
+  if is_up_stairs(0, 0) then
+    return attempt("<", "escape")
+  end
 
-  if true then return attempt_mini_escape() end
+  local stairs = first(where(points(1), function(a)
+    return is_up_stairs(a.x, a.y) and traversable(a.x, a.y)
+  end))
 
-  local plan = escape_plan()
-  print("EXECUTING ESCAPE STEP " .. plan.mode, 6)
-  if plan.mode == 0 then
-    exclude_monsters()
-    plan.mode = plan.mode + 1
-    return true
+  if stairs then
+    return attempt(to_key(stairs.x, stairs.y), "escape")
   end
-  if plan.mode == 1 then
-    plan.turns = you.turns()
-    local cells = all_adjacent_up_stairs()
-    if table.getn(cells) == 0 then
-      attempt_mini_escape()
-    else
-      local cell = any_traversable(cells)
-      if cell then
-        crawl.sendkeys(to_key(cell.x, cell.y))
-      end
-    end
-    plan.mode = plan.mode + 1
-    return true
-  end
-  if plan.mode == 2 then
-    clear_exclusions()
-    plan.mode = plan.mode + 1
-    return true
-  end
-  if plan.mode == 3 then
-    if plan.turns == you.turns() then
-      return false
-    end
-    plan.mode = 0
-    return true
-  end
+
+  return attempt("X<." .. ESCAPE_KEY, "escape")
 end
 
 function escape_plan()
@@ -2023,14 +2005,8 @@ function print(value, channel)
   crawl.mpr(tostring(value), channel)
 end
 
-function compare(left, right)
-  if left < right then
-    return -1
-  end
-  if left > right then
-    return 1
-  end
-  return 0
+function print_point(point, channel)
+  crawl.mpr("(" .. point.x .. ", " .. point.y .. ")", channel)
 end
 
 function to_key(x, y)
@@ -2038,14 +2014,37 @@ function to_key(x, y)
   return keys[5 + x - 3 * y]
 end
 
+function control(letter)
+  return string.char(string.byte(letter) - string.byte("a") + 1)
+end
+
+function compare(left, right)
+  if left < right then return -1 end
+  if left > right then return 1 end
+  return 0
+end
+
 function clamp(value, min, max)
-  if value < min then
-    return min
-  end
-  if value > max then
-    return max
-  end
+  if value < min then return min end
+  if value > max then return max end
   return value
+end
+
+function point(a, b)
+  return {x = a, y = b}
+end
+
+function points(radius)
+  radius = radius or 8
+  local result = {}
+
+  for x = -radius, radius do
+    for y = -radius, radius do
+      util.append(result, {point(x, y)})
+	end
+  end
+
+  return result
 end
 
 function distance(x0, y0, x1, y1)
@@ -2056,20 +2055,22 @@ function cartesian_distance(x0, y0, x1, y1)
   return math.sqrt((x0 - (x1 or 0)) ^ 2 + (y0 - (y1 or 0)) ^ 2)
 end
 
-function control(letter)
-  return string.char(string.byte(letter) - string.byte("a") + 1)
-end
-
-function point(a, b)
-  return {x = a, y = b}
-end
-
-function append_element(t, a)
-  t[length(t) + 1] = a
-end
-
 function length(t)
   return table.getn(t)
+end
+
+function first(t)
+  return t[1]
+end
+
+function where(t, f)
+  local result = {}
+
+  for _, a in ipairs(t) do
+    if f(a) then util.append(result, {a}) end
+  end
+
+  return result
 end
 
 ---------------------------------------------------------------------------

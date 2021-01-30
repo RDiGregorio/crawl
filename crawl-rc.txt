@@ -597,16 +597,7 @@ function is_scary_monster(target)
       has_spell(target, "Flay") then
     return true
   end
-  local names = {
-    "electric eel",
-    "shock serpent",
-	"floating eye",
-	"dream sheep",
-	"lurking horror",
-	"hydra",
-	"manticore",
-	"boggart",
-    "meliai"}
+  local names = { "floating eye", "dream sheep", "lurking horror", "hydra", "manticore", "boggart", "meliai"}
   for _, name in ipairs(names) do
     if target.name(target):find(name) then
       return true
@@ -763,7 +754,7 @@ function calculate_threat(target)
     util.append(hard, {"adder"})
   end
   if not (you.res_shock() > 0) then
-    util.append(hard, {"sky beast"})
+    util.append(hard, {"sky beast", "electric eel", "shock serpent", "spark wasp", "electric golem"})
   end
   if not you.res_corr() then
     util.append(hard, {"jelly"})

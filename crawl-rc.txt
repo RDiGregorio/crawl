@@ -171,33 +171,41 @@ end
 function housekeeping()
   if you.turns() == 0 then
     c_persist.cleared_depth = {}
-    c_persist.escape_plans = {}
     c_persist.found = {}
 	c_persist.flags = {}
+    c_persist.where = you.where()
     train()
   end
+
+  -- todo: this does not work in pan
+
+  if c_persist.where ~= you.where() then
+    stop_escaping()
+  end
+
   crawl.redraw_screen()
   print_information()
+
   if is_invisible_monster_present() then
     update_invisible_waypoint()
   end
+
   if is_escaping() then
     if is_up_stairs(0, 0) then
       stop_escaping()
       return false
     end
-    if escape_plan().mode ~= 0 then
-      escape()
-    end
-    return false
   end
+
   if no_reachable_target then
     if not attempt_mini_explore() and not attempt_mini_escape() then
       stop_running()
     end
+
     no_reachable_target = false
     return false
   end
+
   return true
 end
 
@@ -981,7 +989,7 @@ end
 ---------------------------------------------------------------------------
 
 function is_escaping()
-  return c_persist.flags["escaping"] or false -- escape_plan().mode > -1
+  return c_persist.flags["escaping"] or false
 end
 
 function attempt_mini_escape()
@@ -996,20 +1004,11 @@ function attempt_mini_escape()
 end
 
 function stop_escaping()
-  if is_escaping() then
-    c_persist.flags["escaping"] = false
-
-    c_persist.escape_plans[you.branch() .. you.depth()] = nil
-    clear_exclusions()
-  end
+  c_persist.flags["escaping"] = false
 end
 
 function start_escaping()
   c_persist.flags["escaping"] = true
-
-  --if not is_escaping() then
-  --  escape_plan().mode = 0
-  --end
 end
 
 function escape()
@@ -1030,18 +1029,6 @@ function escape()
   end
 
   return attempt("X<." .. ESCAPE_KEY, "escape")
-end
-
-function escape_plan()
-  local key = you.branch() .. you.depth()
-  if not c_persist.escape_plans[key] then
-    c_persist.escape_plans[key] = {
-      branch = you.branch(),
-      depth = you.depth(),
-      turns = you.turns(),
-      mode = -1}
-  end
-  return c_persist.escape_plans[key]
 end
 
 function exclude_monsters()
@@ -2106,91 +2093,116 @@ function c_message(text, channel)
     stop_running()
     return
   end
-  if text:find("would you want") or
-      text:find("too confused") then
+
+  if text:find("would you want") or text:find("too confused") then
     stop_running()
     return
   end
+
+  if text:find("suddenly seem different") then
+    stop_escaping()
+	return
+  end
+
   if text:find("to the Ecumenical Temple") then
     c_persist.found["Temple"] = true
+	return
   end
+
   if text:find("to the Lair") then
     c_persist.found["Lair"] = true
+	return
   end
-    if text:find("to the Orc") then
+
+  if text:find("to the Orc") then
     c_persist.found["Orc"] = true
+	return
   end
+
   if text:find("explore") or text:find("exploring") then
     if you.depth() == cleared_depth() + 1 then
       c_persist.cleared_depth[you.branch()] = you.depth()
     end
+
     return
   end
+
   if text:find("reachable target") or text:find("move towards target") then
     no_reachable_target = true
     return
   end
-  -- todo: handle portals
-  if text:find("suddenly seem different") or
-      text:find("climb upwards") or
-	  text:find("climb downwards") then
-    stop_escaping()
-	return
-  end
+
   if text:find("There is an entrance") and view.feature_at(0, 0) == "enter_shop" then
     crawl.sendkeys(ESCAPE_KEY)
     return
   end
+
   -- item identification
+
   if text:find("is a scroll of identify") then
     c_persist.found["scroll of identify"] = true
+
     for item in inventory() do
       if want_to_identify_with_scroll(item) then
         crawl.sendkeys(items.index_to_letter(item.slot))
         return
       end
     end
+
     return
   end
+
   if text:find("is a scroll of enchant weapon") then
     local equipped = items.equipped_at("Weapon")
+
     if equipped and not equipped.artefact then
       if (equipped.plus or 0) < 9 then
         crawl.sendkeys(items.index_to_letter(equipped.slot))
         return
       end
     end
+
     return
   end
+
   if text:find("is a scroll of enchant armour") then
     local equipped = best_armour_to_enchant()
+
     if equipped then
       crawl.sendkeys(items.index_to_letter(equipped.slot))
     end
+
     return
   end
+
   if text:find("Blink to where?") then
     if not scroll_of_blinking_letter() then
       crawl.sendkeys("fy")
     end
+
     return
   end
+
   -- invisible monsters
+
   if text:find("the .* flickers and vanishes") then
     local _, _, match = text:find("the (.*) flickers and vanishes")
     invisible_monster_name = match
     return
   end
+
   if text:find(".* flickers and vanishes") then
     local _, _, match = text:find("(.*) flickers and vanishes")
     invisible_monster_name = match
     return
   end
+
   if text:find("the .* flickers out of sight") then
     local _, _, match = text:find("the (.*) flickers out of sight")
     invisible_monster_name = match
     return
   end
+
   if text:find("Reactivating autopickup") then
     invisible_monster_name = nil
     invisible_waypoint_exists = false

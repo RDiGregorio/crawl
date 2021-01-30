@@ -188,7 +188,7 @@ macros += M 5 ===wait
 :  local threat_level = adjusted_threat()
 :  local channel = nil
 :  local message = "Danger: "
-:  message = message .. math.floor(danger_percent()) .. "%"
+:  message = message .. math.floor(danger_percent()) .. "% (" .. danger_string(threat_level) .. ")"
 :  if threat_level >= IMPOSSIBLE then
 :    channel = 6
 :  end
@@ -481,9 +481,7 @@ macros += M 5 ===wait
 
 :function must_berserk()
 :  -- todo: add better checks for if this ability is possible
-:  if is_safe()
-:      or berserk_disabled()
-:      or is_berserk_bad() then
+:  if is_safe() or not can_berserk() then
 :    return false
 :  end
 :  return is_angry()
@@ -508,13 +506,6 @@ macros += M 5 ===wait
 :  return false
 :end
 
-:function is_berserk_bad()
-:  if you.caught() then
-:    return true
-:  end
-:  return false
-:end
-
 :function can_escape()
 :  if is_scared() then
 :    return false
@@ -529,6 +520,7 @@ macros += M 5 ===wait
 :end
 
 :function any_fast_monster(radius)
+:  radius = radius or 8
 :  for a = -radius, radius do
 :    for b = -radius, radius do
 :      local c = monster.get_monster_at(a, b)
@@ -569,12 +561,20 @@ macros += M 5 ===wait
 :end
 
 :function is_angry()
-:  return adjusted_threat(1) >= EASY * 4 / 3 and
-:    adjusted_threat() >= MEDIUM * 4 / 3
+:  local adjacent = adjusted_threat(1)
+:  local total = adjusted_threat()
+:  -- berserk is used at 75% health against monsters with yellow names
+:  return adjacent >= MEDIUM and total >= MEDIUM * 4 / 3
 :end
 
-:function berserk_disabled()
-:  return you.berserk() or you.status("berserk cooldown")
+:function can_berserk()
+:  return you.god() == "Trog" and
+:      you.piety_rank() > 0 and
+:      not you.berserk() and
+:      not you.status("berserk cooldown") and
+:      not you.mesmerised() and
+:      not you.status("afraid") and
+:      not you.caught()
 :end
 
 :function is_scared()
@@ -734,58 +734,67 @@ macros += M 5 ===wait
 :end
 
 :function adjusted_threat(radius)
-:  local result = threat(radius)
-:  if you.slowed() or
-:      you.poisoned() or
-:      you.corrosion() > 0 then
-:    result = result * 2
-:  end
-:  return result * 100 / hp_percent()
+:  local multiplier = 1
+:  if you.slowed() then multiplier = multiplier + 1 end
+:  if you.poisoned() then multiplier = multiplier + 1 end
+:  if you.corrosion() > 0 then multiplier = multiplier + 1 end
+:  return threat(radius) * multiplier * 100 / hp_percent()
 :end
 
 :function danger_percent()
 :  return math.min(adjusted_threat() * 100 / IMPOSSIBLE, 999)
 :end
 
+:function danger_string(value)
+:  if value >= IMPOSSIBLE then return "impossible" end
+:  if value >= NIGHTMARE then return "nightmare" end
+:  if value >= HARD then return "hard" end
+:  if value >= MEDIUM then return "medium" end
+:  if value >= EASY then return "easy" end
+:  if value >= POPCORN then return "popcorn" end
+:  return "safe"
+:end
+
 :function calculate_threat(target)
-:  local hard_monsters = {
-:    -- early game
-:    "worm",
-:    "gnoll",
-:    -- giants
-:    "ogre",
-:    "cyclops",
-:    "ettin",
-:    "giant",
-:    "titan",
-:    "juggernaut",
-:    -- mid game
-:    "ugly thing",
-:    -- poison monsters
-:    "adder",
-:    -- acid monsters
-:    "jelly",
-:    -- electric monsters
-:    "sky beast",
-:    -- petrification
-:    "basilisk"
-:  }
+:  local hard = {}
+:  -- early game
+:  util.append(hard, {"worm", "gnoll"})
+:  -- mid game
+:  util.append(hard, {"ugly thing"})
+:  -- giants
+:  util.append(hard, {"ogre", "cyclops", "ettin", "titan", "juggernaut"})
+:  -- resistances
+:  if not (you.res_poison() > 0) then
+:    util.append(hard, {"adder"})
+:  end
+:  if not (you.res_shock() > 0) then
+:    util.append(hard, {"sky beast"})
+:  end
+:  if not you.res_corr() then
+:    util.append(hard, {"jelly"})
+:  end
 :  local result = target:threat()
-:  for _, name in ipairs(hard_monsters) do
-:    if target.name(target):find(name) or
-:        --target.is_unique(target) or
-:        target:is("berserk") or
-:        has_spell(target, "Smiting") then
+:  for _, name in ipairs(hard) do
+:    if target:name():find(name) then
 :      result = result + 1
-:      return 2 ^ result
 :    end
+:  end
+:  -- spells
+:  if target:is("berserk") or
+:      has_spell(target, "Smiting") or
+:      has_spell(target, "Petrify") or
+:      has_spell(target, "Petrifying Cloud") or
+:      has_spell(target, "Paralyse") or
+:      has_spell(target, "Paralysis Gaze") then
+:    result = result + 1
 :  end
 :  return 2 ^ result
 :end
 
 :function calculate_invisible_threat()
+:  -- todo: use invisible_monster_name to calcualte threat
 :  if is_invisible_monster_present() then
-:    return NIGHTMARE
+:    return HARD
 :  end
 :  return 0
 :end
@@ -2051,6 +2060,14 @@ macros += M 5 ===wait
 :  return {x = a, y = b}
 :end
 
+:function append_element(t, a)
+:  t[length(t) + 1] = a
+:end
+
+:function length(t)
+:  return table.getn(t)
+:end
+
 ############################################################################
 # hooks                                                                    #
 ############################################################################
@@ -2183,5 +2200,19 @@ macros += M 0 ===debug_escape
 :end
 
 :function debug()
-:  print(you.regenerating())
+:  print(foo())
+:end
+
+:function foo()
+:  radius = 8
+:  for a = -radius, radius do
+:    for b = -radius, radius do
+:      local c = monster.get_monster_at(a, b)
+:      if c and not c:is_safe() then
+:        if c:has_known_ranged_attack() then
+:          return c
+:        end
+:      end
+:    end
+:  end
 :end

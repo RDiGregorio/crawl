@@ -17,6 +17,11 @@
 # can walk into travel exclusions while tabbing
 
 # add logic to bia when piety > 4
+# improve logic for when you can't reach an electric eel
+# stair dancing can be stuck in a loop if the monster being danced in unreachable
+# count up stairs per floor, cap it at something reasonable like 100?
+
+# HAVE TO PREVENT UNDEAD FROM BEING STAIR DANCED
 
 -------------------------------------------------------------------------
 -- options                                                             --
@@ -112,7 +117,6 @@ macros += M \{9} ===tab
 macros += M 5 ===wait
 
 {
-
 local POPCORN = 2 ^ 0
 local EASY = 2 ^ 1
 local MEDIUM = 2 ^ 2
@@ -127,6 +131,8 @@ local ENTER_KEY = string.char(13)
 
 local running = false
 local no_reachable_target = false
+local stair_dancing = false
+local repetitions = {}
 
 local invisible_waypoint_exists = false
 local invisible_monster_name = nil
@@ -166,7 +172,8 @@ function housekeeping()
   if you.turns() == 0 then
     c_persist.cleared_depth = {}
     c_persist.escape_plans = {}
-	c_persist.found = {}
+    c_persist.found = {}
+	c_persist.flags = {}
     train()
   end
   crawl.redraw_screen()
@@ -175,7 +182,7 @@ function housekeeping()
     update_invisible_waypoint()
   end
   if is_escaping() then
-    if is_up_stairs(0, 0) or is_down_stairs(0, 0) then
+    if is_up_stairs(0, 0) then
       stop_escaping()
       return false
     end
@@ -214,16 +221,39 @@ function train()
 end
 
 function run(stepping)
+  if stair_dancing and is_stuck(you.branch() .. you.depth() .. "dance") then
+    stair_dancing = false
+	stop_escaping()
+  end
+
+  if stair_dancing then
+    print("STAIR DANCING!!!", 6)
+
+    if not can_stair_dance() then
+      stair_dancing = false
+      stop_escaping()
+    end
+
+    if is_up_stairs(0, 0) then
+      crawl.sendkeys("<")
+	  return
+    end
+
+    if not is_escaping() then
+      stair_dancing = false
+    else
+      escape()
+	end
+
+    return
+  end
+
   if is_scared() or is_escaping() then
     stop_running()
     print("SCARED!", 6)
   end
-  if not can_escape() and is_escaping() then
-    --print("UNABLE TO ESCAPE!")
-    --stop_escaping()
-    --return
-  end
   if running or stepping then
+    -- todo: handle autoclear better
     crawl.more_autoclear(true)
     if is_escaping() then
       escape()
@@ -239,8 +269,9 @@ function run(stepping)
         end
         return
       end
-      if must_start_escaping() then
-        start_escaping()
+      if can_stair_dance() then
+        stair_dancing = true
+		start_escaping()
         return
       end
       if must_hand() then
@@ -265,6 +296,11 @@ end
 ---------------------------------------------------------------------------
 -- exploration                                                           --
 ---------------------------------------------------------------------------
+
+function is_stuck(key)
+  repetitions[key] = (repetitions[key] or 0) + 1
+  return repetitions[key] >= 100
+end
 
 function must_rest()
   return is_after_berserk() or
@@ -503,40 +539,93 @@ function can_escape()
   return true
 end
 
-function any_fast_monster(radius)
+function can_kite()
+  -- need to think about this a lot more
+  local names = {}
+  if any_fast_monster(1) then return false end
+  for a = -8, 8 do
+    for b = -8, 8 do
+      local c = monster.get_monster_at(a, b)
+      if c and not c:is_safe() then
+        if target:has_known_ranged_attack() or
+            util.exists(names, function(name) return c:name():find(name) end) then
+          return false
+        end
+      end
+    end
+  end
+  return true
+end
+
+function can_stair_dance()
+  -- need to handle undead, summons, "incapable of using stairs", :is("summoned")
+  return you.absdepth() > 1 and count_monsters() > count_monsters(1) and can_see_up_stairs()
+end
+
+function can_see_up_stairs(radius)
   radius = radius or 8
   for a = -radius, radius do
     for b = -radius, radius do
-      local c = monster.get_monster_at(a, b)
-      if c and not c:is_safe() then
-        local speed = c:speed_description()
-        if speed == "fast" or
-            speed == "very fast" or
-            speed == "extremely fast" then
-          return c
-        end
+      if is_up_stairs(a, b) and you.see_cell_no_trans(a, b) then
+        return a, b
       end
     end
   end
 end
 
-function find_monster(name)
-  for a = -8, 8 do
-    for b = -8, 8 do
+function any_fast_monster(radius)
+  radius = radius or 8
+  for a = -radius, radius do
+    for b = -radius, radius do
       local c = monster.get_monster_at(a, b)
-      if c and not c.is_safe(c) and c.name(c):find(name) then
+      if c and not c:is_safe() and is_fast_monster(c) then
         return c
       end
     end
   end
 end
 
-function count_monsters()
-  local result = 0
+function is_fast_monster(target)
+  return target:speed_description():find("fast")
+end
+
+function find_monster(name)
   for a = -8, 8 do
     for b = -8, 8 do
       local c = monster.get_monster_at(a, b)
-      if c and not c.is_safe(c) then
+      if c and not c:is_safe() and c:name():find(name) then
+        return c
+      end
+    end
+  end
+end
+
+function count_monsters(radius)
+  radius = radius or 8
+  local result = 0
+  for a = -radius, radius do
+    for b = -radius, radius do
+      local c = monster.get_monster_at(a, b)
+      if c and not c:is_safe() then
+        result = result + 1
+      end
+    end
+  end
+  return result
+end
+
+function count_monsters2(radius)
+  radius = radius or 8
+  local result = 0
+  for a = -radius, radius do
+    for b = -radius, radius do
+      local c = monster.get_monster_at(a, b)
+      if c and not c:is_safe() then
+	    print(c:name())
+		print(you.see_cell(c:pos()))
+		print(you.see_cell_no_trans(c:pos()))
+		print(you.see_cell_solid(c:pos()))
+		print(you.see_cell_solid_see(c:pos()))
         result = result + 1
       end
     end
@@ -706,6 +795,7 @@ function calculate_threat(target)
       has_chaos_weapon(target) or
       has_distortion_weapon(target) or
       has_spell(target, "Smiting") or
+      has_spell(target, "Banishment") or
       has_spell(target, "Petrify") or
       has_spell(target, "Petrifying Cloud") or
       has_spell(target, "Paralyse") or
@@ -818,7 +908,7 @@ function traversable(x, y)
 end
 
 function find_invisible(radius)
-  local radius = radius or 8
+  radius = radius or 8
   for a = -radius, radius do
     for b = -radius, radius do
       if view.invisible_monster(a, b) then
@@ -889,7 +979,7 @@ end
 ---------------------------------------------------------------------------
 
 function is_escaping()
-  return escape_plan().mode > -1
+  return c_persist.flags["escaping"] or false -- escape_plan().mode > -1
 end
 
 function attempt_mini_escape()
@@ -905,18 +995,26 @@ end
 
 function stop_escaping()
   if is_escaping() then
+    c_persist.flags["escaping"] = false
+
     c_persist.escape_plans[you.branch() .. you.depth()] = nil
     clear_exclusions()
   end
 end
 
 function start_escaping()
-  if not is_escaping() then
-    escape_plan().mode = 0
-  end
+  c_persist.flags["escaping"] = true
+
+  --if not is_escaping() then
+  --  escape_plan().mode = 0
+  --end
 end
 
 function escape()
+
+
+  if true then return attempt_mini_escape() end
+
   local plan = escape_plan()
   print("EXECUTING ESCAPE STEP " .. plan.mode, 6)
   if plan.mode == 0 then
@@ -2031,8 +2129,14 @@ function c_message(text, channel)
     no_reachable_target = true
     return
   end
-  if text:find("There is an entrance") and
-      view.feature_at(0, 0) == "enter_shop" then
+  -- todo: handle portals
+  if text:find("suddenly seem different") or
+      text:find("climb upwards") or
+	  text:find("climb downwards") then
+    stop_escaping()
+	return
+  end
+  if text:find("There is an entrance") and view.feature_at(0, 0) == "enter_shop" then
     crawl.sendkeys(ESCAPE_KEY)
     return
   end
@@ -2113,7 +2217,21 @@ function debug_escape()
 end
 
 function debug()
-  print(calculate_invisible_threat())
+  debug_escape()
+end
+
+function ch_start_running(kind)
+  -- now i just have to check if escaping, and clear escaping when changing floors or teleporting!
+  -- buggy if the travel target is adjacent and had a mob on it
+  if kind == "intertravel" then
+    exclude_monsters()
+  end
+end
+
+function ch_stop_running(kind)
+  if kind == "intertravel" then
+    clear_exclusions()
+  end
 end
 
 }

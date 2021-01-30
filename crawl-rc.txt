@@ -650,14 +650,21 @@ function has_spell(monster, name)
 end
 
 function has_electrocution_weapon(monster)
-  if monster.desc(monster, true):find("of electrocution%.") then
+  if monster:desc(true):find("of electrocution%.") then
+    return true
+  end
+  return false
+end
+
+function has_chaos_weapon(monster)
+  if monster:desc(true):find("of chaos%.") then
     return true
   end
   return false
 end
 
 function has_distortion_weapon(monster)
-  if monster.desc(monster, true):find("of distortion%.") then
+  if monster:desc(true):find("of distortion%.") then
     return true
   end
   return false
@@ -672,9 +679,12 @@ function scary_weapons()
         if has_electrocution_weapon(c) then
           result[table.getn(result) + 1] = c.name(c) .. " has electrocution!"
         end
+        if has_chaos_weapon(c) then
+          result[table.getn(result) + 1] = c.name(c) .. " has chaos!"
+        end
         if has_distortion_weapon(c) then
           result[table.getn(result) + 1] = c.name(c) .. " has distortion!"
-        end      
+        end
       end
     end
   end
@@ -744,6 +754,8 @@ function calculate_threat(target)
   util.append(hard, {"worm", "gnoll"})
   -- mid game
   util.append(hard, {"ugly thing"})
+  -- late game
+  util.append(hard, {"lurking horror"})
   -- giants
   util.append(hard, {"ogre", "cyclops", "ettin", "titan", "juggernaut"})
   -- resistances
@@ -762,13 +774,21 @@ function calculate_threat(target)
       result = result + 1
     end
   end
-  -- spells
+  -- weapons, spells, and abilities
   if target:is("berserk") or
+      has_electrocution_weapon(target) or
+      has_chaos_weapon(target) or
+      has_distortion_weapon(target) or
       has_spell(target, "Smiting") or
       has_spell(target, "Petrify") or
       has_spell(target, "Petrifying Cloud") or
       has_spell(target, "Paralyse") or
-      has_spell(target, "Paralysis Gaze") then
+      has_spell(target, "Paralysis Gaze") or
+      has_spell(target, "Hurl Damnation") or
+      has_spell(target, "Call Down Damnation") or
+      has_spell(target, "Symbol of Torment") or
+      has_spell(target, "Agony Range") or
+      has_spell(target, "Flay") then
     result = result + 1
   end
   return 2 ^ result
@@ -1401,7 +1421,7 @@ function identify_items()
     if item.class(true) == "scroll" and
         not item.fully_identified and
         item.quantity > 1 and
-        (id_letter or want_to_use_scroll_of_identify()) then
+        (c_persist.found["scroll of identify"] or want_to_use_scroll_of_identify()) then
       return read_scroll(items.index_to_letter(item.slot))
     end
   end
@@ -2099,6 +2119,7 @@ function c_message(text, channel)
   end
   -- item identification
   if text:find("is a scroll of identify") then
+    c_persist.found["scroll of identify"] = true
     for item in inventory() do
       if want_to_identify_with_scroll(item) then
         crawl.sendkeys(items.index_to_letter(item.slot))
@@ -2173,7 +2194,7 @@ function debug_escape()
 end
 
 function debug()
-  print(to_key(-1, 1))
+  foo()
 end
 
 function foo()
@@ -2182,9 +2203,7 @@ function foo()
     for b = -radius, radius do
       local c = monster.get_monster_at(a, b)
       if c and not c:is_safe() then
-        if c:has_known_ranged_attack() then
-          return c
-        end
+        print(c:desc())
       end
     end
   end

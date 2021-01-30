@@ -18,9 +18,9 @@
 
 # add logic to bia when piety > 4
 
-############################################################################
-# options                                                                  #
-############################################################################
+-------------------------------------------------------------------------
+-- options                                                             --
+-------------------------------------------------------------------------
 
 # prevents accidental resting or abilities
 
@@ -87,6 +87,7 @@ channel.multiturn = mute
 channel.talk = mute
 channel.talk_visual = mute
 channel.timed_portal = mute
+cannel.sound = mute
 channel.monster_damage = mute
 
 message_colour += mute:menu to convert
@@ -101,9 +102,9 @@ background = be
 weapon = hand axe
 default_manual_training = true
 
---############################################################################
---# main                                                                     #
---############################################################################
+---------------------------------------------------------------------------
+-- main                                                                  --
+---------------------------------------------------------------------------
 
 macros += M o ===start_running
 macros += M p ===step
@@ -156,19 +157,20 @@ function stop_running()
 end
 
 function ready()
-  crawl.redraw_screen()
-  print_information()
-  if you.turns() == 0 then
-    c_persist.cleared_depth = {}
-    c_persist.escape_plans = {}
-    train()
-  end
   if housekeeping() then
     run()
   end
 end
 
 function housekeeping()
+  if you.turns() == 0 then
+    c_persist.cleared_depth = {}
+    c_persist.escape_plans = {}
+	c_persist.found = {}
+    train()
+  end
+  crawl.redraw_screen()
+  print_information()
   if is_invisible_monster_present() then
     update_invisible_waypoint()
   end
@@ -196,7 +198,7 @@ function print_information()
   local threat_level = adjusted_threat()
   local channel = nil
   local message = "Danger: "
-  message = message .. math.floor(danger_percent()) .. "% (" .. danger_string(threat_level) .. ")"
+  message = message .. math.floor(danger_percent()) .. "% (" .. danger_text(threat_level) .. ")"
   if threat_level >= IMPOSSIBLE then
     channel = 6
   end
@@ -265,9 +267,9 @@ function step()
   run(true)
 end
 
---############################################################################
---# exploration                                                              #
---############################################################################
+---------------------------------------------------------------------------
+-- exploration                                                           --
+---------------------------------------------------------------------------
 
 function must_rest()
   return is_after_berserk() or
@@ -319,7 +321,9 @@ function explore()
   end
   if not attempt("o") then
     if safe_to_descend() then
-      crawl.sendkeys("G" .. goal() .. ENTER_KEY)
+      if not attempt("G" .. goal() .. ENTER_KEY, "branch") then
+        stop_running()
+      end
       return
     end
     stop_running()
@@ -374,49 +378,26 @@ function safe_to_descend()
 end
 
 function goal()
-  -- complete D:11
-  if cleared_depth("D") < 11 then
-    if you.branch() == "D" then
-      return "D" .. you.depth() + 1
-    end
-    return "D" .. goal_floor("D")
+  if c_persist.found["Temple"] and c_persist.cleared_depth["Temple"] ~= 1 then
+    return "T"
   end
-  -- complete Lair:6
-  if cleared_depth("Lair") < 6 then
-    if you.branch() == "Lair" then
-      return "L" .. you.depth() + 1
+  if c_persist.found["Lair"] then
+    if c_persist.cleared_depth["Lair"] ~= 6 then
+      return "L" .. cleared_depth("Lair") + 1
     end
-    return "L" .. goal_floor("Lair")
-  end
-  -- complete Orc:2
-  if cleared_depth("Orc") < 2 then
-    if you.branch() == "Orc" then
-      return "O" .. you.depth() + 1
+    if c_persist.found["Orc"] and c_persist.cleared_depth["Orc"] ~= 2 then
+      return "O" .. cleared_depth("Orc") + 1
     end
-    return "O" .. goal_floor("Orc")
   end
-  -- complete Dungeon:15
-  if cleared_depth("D") < 15 then
-    if you.branch() == "D" then
-      return "D" .. you.depth() + 1
-    end
-    return "D" .. goal_floor("D")
+  if c_persist.cleared_depth["D"] ~= 15 then
+      return "D" .. cleared_depth("D") + 1
   end
-  stop_running()
   return ""
 end
 
-function goal_floor(branch)
-  local result = travel.find_deepest_explored(branch)
-  if result < 1 then
-    return 1
-  end
-  return result
-end
-
---############################################################################
---# combat                                                                   #
---############################################################################
+---------------------------------------------------------------------------
+-- combat                                                                --
+---------------------------------------------------------------------------
 
 function is_fearless()
   if not running then
@@ -747,7 +728,7 @@ function danger_percent()
   return math.min(adjusted_threat() * 100 / IMPOSSIBLE, 999)
 end
 
-function danger_string(value)
+function danger_text(value)
   if value >= IMPOSSIBLE then return "impossible" end
   if value >= NIGHTMARE then return "nightmare" end
   if value >= HARD then return "hard" end
@@ -951,15 +932,15 @@ function closest_adjacent_traversable(x, y)
   end
 end
 
---############################################################################
---# complex combat                                                           #
---############################################################################
+---------------------------------------------------------------------------
+-- complex combat                                                        --
+---------------------------------------------------------------------------
 
 -- todo
 
---############################################################################
---# escaping                                                                 #
---############################################################################
+---------------------------------------------------------------------------
+-- escaping                                                              --
+---------------------------------------------------------------------------
 
 function is_escaping()
   return escape_plan().mode > -1
@@ -1072,9 +1053,9 @@ function all_adjacent_up_stairs()
   return adjacent
 end
 
---############################################################################
---# item dropping                                                            #
---############################################################################
+---------------------------------------------------------------------------
+-- item dropping                                                         --
+---------------------------------------------------------------------------
 
 function drop(item)
   local letter = items.index_to_letter(item.slot)
@@ -1222,9 +1203,9 @@ function is_junk(item)
   return false
 end
 
---############################################################################
---# autopickup                                                               #
---############################################################################
+---------------------------------------------------------------------------
+-- autopickup                                                            --
+---------------------------------------------------------------------------
 
 function is_unneeded_duplicate(item)
   if item.artefact or
@@ -1335,9 +1316,9 @@ end
 
 add_autopickup_func(autopickup)
 
---############################################################################
---# curse removal                                                            #
---############################################################################
+---------------------------------------------------------------------------
+-- curse removal                                                         --
+---------------------------------------------------------------------------
 
 function scroll_of_remove_curse_letter()
   for item in inventory() do
@@ -1360,9 +1341,9 @@ function remove_curse()
   return false
 end
 
---############################################################################
---# item identification                                                      #
---############################################################################
+---------------------------------------------------------------------------
+-- item identification                                                   --
+---------------------------------------------------------------------------
 
 function scroll_of_identify_letter()
   for item in inventory() do
@@ -1434,9 +1415,9 @@ function identify_items()
   return false
 end
 
---############################################################################
---# item utility                                                             #
---############################################################################
+---------------------------------------------------------------------------
+-- item utility                                                          --
+---------------------------------------------------------------------------
 
 function inventory()
   return iter.invent_iterator:new(items.inventory())
@@ -1454,9 +1435,9 @@ function read_scroll(letter)
   return true
 end
 
---############################################################################
---# equipment utility                                                        #
---############################################################################
+---------------------------------------------------------------------------
+-- equipment utility                                                     --
+---------------------------------------------------------------------------
 
 function uses_weapon_skill(item)
   return item.class(true) == "weapon" and item.weap_skill == "Axes"
@@ -1853,9 +1834,9 @@ function remove_dangerous_rings()
   return false
 end
 
---############################################################################
---# weapon and armour utility                                                #
---############################################################################
+---------------------------------------------------------------------------
+-- weapon and armour utility                                             -- 
+---------------------------------------------------------------------------
 
 function compare_weapons(left, right)
   -- todo: handle artefacts
@@ -1997,9 +1978,9 @@ function best_ac(subtype)
   return result
 end
 
---############################################################################
---# general utility                                                          #
---############################################################################
+---------------------------------------------------------------------------
+-- general utility                                                       --
+---------------------------------------------------------------------------
 
 function print(value, channel)
   crawl.mpr(tostring(value), channel)
@@ -2063,9 +2044,9 @@ function length(t)
   return table.getn(t)
 end
 
---############################################################################
---# hooks                                                                    #
---############################################################################
+---------------------------------------------------------------------------
+-- hooks                                                                 --
+---------------------------------------------------------------------------
 
 function c_answer_prompt(prompt)
   if prompt:find("Keep equipping") then
@@ -2101,13 +2082,22 @@ function c_message(text, channel)
     stop_running()
     return
   end
+  if text:find("to the Ecumenical Temple") then
+    c_persist.found["Temple"] = true
+  end
+  if text:find("to the Lair") then
+    c_persist.found["Lair"] = true
+  end
+    if text:find("to the Orc") then
+    c_persist.found["Orc"] = true
+  end
   if text:find("explore") or text:find("exploring") then
     if you.depth() == cleared_depth() + 1 then
       c_persist.cleared_depth[you.branch()] = you.depth()
     end
     return
   end
-  if text:find("reachable target") then
+  if text:find("reachable target") or text:find("move towards target") then
     no_reachable_target = true
     return
   end
@@ -2176,9 +2166,9 @@ function choose_stat_gain()
   return "i"
 end
 
---############################################################################
---# debug                                                                    #
---############################################################################
+---------------------------------------------------------------------------
+-- debug                                                                 --
+---------------------------------------------------------------------------
 
 function debug_escape()
   if is_up_stairs(0, 0) then
@@ -2192,7 +2182,7 @@ function debug_escape()
 end
 
 function debug()
-  print(you.regenerating())
+  print(you.branch())
 end
 
 function foo()

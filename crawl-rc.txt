@@ -203,12 +203,7 @@ function print_information()
     channel = 6
   end
   print(message, channel)
-  if scary_monster_present() then
-    print_scary_monsters()
-  end
-  if scary_weapon_present() then
-    print_scary_weapons()
-  end
+  print_extra_hard_monsters()
 end
 
 function train()
@@ -573,12 +568,6 @@ function is_scared()
     return true
   end
   if not is_safe() then
-    if scary_monster_present() then
-      return true
-    end
-    if scary_weapon_present() then
-      return true
-    end
     if you.status("barbed spikes") or
         has_bad_transformation() then
       return true
@@ -589,44 +578,6 @@ function is_scared()
     end
   end
   return false
-end
-
-function is_scary_monster(target)
-  if has_spell(target, "Symbol of Torment") or
-      has_spell(target, "Agony Range") or
-      has_spell(target, "Flay") then
-    return true
-  end
-  local names = { "floating eye", "dream sheep", "lurking horror", "hydra", "manticore", "boggart", "meliai"}
-  for _, name in ipairs(names) do
-    if target.name(target):find(name) then
-      return true
-    end
-  end
-  return false
-end
-
-function scary_monster_present()
-  return table.getn(scary_monsters()) > 0
-end
-
-function scary_monsters()
-  local result = {}
-  for a = -8, 8 do
-    for b = -8, 8 do
-      local c = monster.get_monster_at(a, b)
-      if c and not c.is_safe(c) and is_scary_monster(c) then
-        result[table.getn(result) + 1] = c
-      end
-    end
-  end
-  return result
-end
-
-function print_scary_monsters()
-  for _, monster in ipairs(scary_monsters()) do
-    print(monster.name(monster) .. " is dangerous!", 6)
-  end
 end
 
 function has_spell(monster, name)
@@ -661,37 +612,6 @@ function has_distortion_weapon(monster)
   return false
 end
 
-function scary_weapons()
-  local result = {}
-  for a = -8, 8 do
-    for b = -8, 8 do
-      local c = monster.get_monster_at(a, b)
-      if c then
-        if has_electrocution_weapon(c) then
-          result[table.getn(result) + 1] = c.name(c) .. " has electrocution!"
-        end
-        if has_chaos_weapon(c) then
-          result[table.getn(result) + 1] = c.name(c) .. " has chaos!"
-        end
-        if has_distortion_weapon(c) then
-          result[table.getn(result) + 1] = c.name(c) .. " has distortion!"
-        end
-      end
-    end
-  end
-  return result
-end
-
-function scary_weapon_present()
-  return table.getn(scary_weapons()) > 0
-end
-
-function print_scary_weapons()
-  for _, message in ipairs(scary_weapons()) do
-    print(message, 6)
-  end
-end
-
 function threat(radius)
   radius = radius or 8
   local result = 0
@@ -712,9 +632,9 @@ function threat(radius)
   if is_invisible_monster_present() and
       invisible_threat == 0 and
       radius == 8 then
-    result = result + calculate_invisible_threat()
+    invisible_threat = calculate_invisible_threat()
   end
-  return result
+  return result + invisible_threat
 end
 
 function adjusted_threat(radius)
@@ -739,14 +659,29 @@ function danger_text(value)
   return "safe"
 end
 
+function is_extra_hard(target)
+  return calculate_threat(target) > 2 ^ target:threat()
+end
+
+function print_extra_hard_monsters()
+  for a = -8, 8 do
+    for b = -8, 8 do
+      local c = monster.get_monster_at(a, b)
+      if c and not c:is_safe() and is_extra_hard(c) then
+        print(c:name() .. " (" .. danger_text(calculate_threat(c)) .. ")", 6)
+      end
+    end
+  end
+end
+
 function calculate_threat(target)
   local hard = {}
   -- early game
   util.append(hard, {"worm", "gnoll"})
   -- mid game
-  util.append(hard, {"ugly thing"})
+  util.append(hard, {"dream sheep", "hydra", "manticore"})
   -- late game
-  util.append(hard, {"lurking horror"})
+  util.append(hard, {"ugly thing", "boggart", "lurking horror"})
   -- giants
   util.append(hard, {"ogre", "cyclops", "ettin", "titan", "juggernaut"})
   -- resistances
@@ -2178,19 +2113,7 @@ function debug_escape()
 end
 
 function debug()
-  foo()
-end
-
-function foo()
-  radius = 8
-  for a = -radius, radius do
-    for b = -radius, radius do
-      local c = monster.get_monster_at(a, b)
-      if c and not c:is_safe() then
-        print(c:desc())
-      end
-    end
-  end
+  print(calculate_invisible_threat())
 end
 
 }

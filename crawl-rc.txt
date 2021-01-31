@@ -19,7 +19,7 @@
 # add logic to bia when piety > 4
 # improve logic for when you can't reach an electric eel
 # run on torment
-# add hallway preference
+# add hallway preference, improve the can escape logic
 
 -------------------------------------------------------------------------
 -- options                                                             --
@@ -36,8 +36,8 @@ explore_auto_rest = true
 rest_wait_both = true
 show_more = false
 easy_confirm = all
-automagic_enable = true
 autofight_stop = 0
+autofight_caught = true
 travel_one_unsafe_move = true
 
 explore_stop = stairs, shops, altars, portals, branches, runed_doors
@@ -102,11 +102,14 @@ local attempt_turns = {}
 function attempt(keys, index)
   -- always returns true when first called
   -- returns false if called more than once in the same turn
+
   index = index or "default"
   local turns = attempt_turns[index] or -1
+
   if you.turns() == turns then
     return false
   end
+
   attempt_turns[index] = you.turns()
   crawl.sendkeys(keys)
   return true
@@ -150,6 +153,8 @@ function housekeeping()
   -- todo: this does not work in pan
 
   if c_persist.where ~= you.where() then
+    invisible_monster_name = nil
+    invisible_waypoint_exists = false
     stop_escaping()
   end
 
@@ -247,7 +252,7 @@ end
 ---------------------------------------------------------------------------
 
 function must_rest()
-  return is_after_berserk() or
+  return you.status("berserk cooldown") or
       hp_percent() < 100 or
       mp_percent() < 100 or
       you.slowed() or
@@ -257,10 +262,6 @@ function must_rest()
       you.status("marked") or
       you.corrosion() > 0 or
       has_bad_transformation()
-end
-
-function is_after_berserk()
-  return you.status("berserk cooldown")
 end
 
 function explore()
@@ -295,6 +296,8 @@ function explore()
     unshaft()
     return
   end
+
+  -- todo: this doesn't always work
 
   if you.depth() > cleared_depth() then
     if not attempt("o") then
@@ -431,11 +434,6 @@ end
 function tab(is_reckless)
   if hp_percent() <= 50 and not is_reckless then
     print("You are too injured to fight recklessly!")
-    return
-  end
-
-  if you.caught() then
-    crawl.sendkeys("b")
     return
   end
 
@@ -657,42 +655,34 @@ function is_scared()
     end
     if not is_fearless() then
        -- experimental
-      return adjusted_threat() >= IMPOSSIBLE
+      return adjusted_threat() >= NIGHTMARE
     end
   end
   return false
 end
 
 function has_spell(monster, name)
-  for _, book in ipairs(monster.spells(monster)) do
-    for _, spell in ipairs(book) do
-      if spell:find(name) then
-        return true
-      end
-    end
+  local is_matching_spell = function(spell)
+    return spell:find(name)
   end
-  return false
+
+  local is_matching_book = function(book)
+    return any(book, is_matching_spell)
+  end
+
+  return any(monster:spells(), is_matching_book)
 end
 
 function has_electrocution_weapon(monster)
-  if monster:desc(true):find("of electrocution%.") then
-    return true
-  end
-  return false
+  return monster:desc(true):find("of electrocution%.")
 end
 
 function has_chaos_weapon(monster)
-  if monster:desc(true):find("of chaos%.") then
-    return true
-  end
-  return false
+  return monster:desc(true):find("of chaos%.")
 end
 
 function has_distortion_weapon(monster)
-  if monster:desc(true):find("of distortion%.") then
-    return true
-  end
-  return false
+  return monster:desc(true):find("of distortion%.")
 end
 
 function threat(radius)
@@ -798,14 +788,6 @@ function calculate_threat(target)
     end
   end
 
-  -- weapons
-
-  if has_electrocution_weapon(target) or
-      has_chaos_weapon(target) or
-      has_distortion_weapon(target) then
-    result = math.max(result, 3)
-  end
-
   -- spells and abilities
 
   if target:is("berserk") or
@@ -821,6 +803,14 @@ function calculate_threat(target)
       has_spell(target, "Agony Range") or
       has_spell(target, "Flay") then
     result = result + 1
+  end
+
+  -- weapons
+
+  if has_electrocution_weapon(target) or
+      has_chaos_weapon(target) or
+      has_distortion_weapon(target) then
+    result = math.max(result, 3)
   end
 
   return 2 ^ result
@@ -2074,6 +2064,32 @@ function where(t, f)
   return result
 end
 
+function map(t, f)
+  local result = {}
+
+  for _, a in ipairs(t) do
+    util.append(result, {f(a)})
+  end
+
+  return result
+end
+
+function any(t, f)
+  for _, a in ipairs(t) do
+    if f(a) then return true end
+  end
+
+  return false
+end
+
+function all(t, f)
+  for _, a in ipairs(t) do
+    if not f(a) then return false end
+  end
+
+  return true
+end
+
 ---------------------------------------------------------------------------
 -- hooks                                                                 --
 ---------------------------------------------------------------------------
@@ -2109,11 +2125,16 @@ function c_message(text, channel)
   end
 
   if text:find("would you want") or text:find("too confused") then
+   -- too confused happens when a monster goes invisible while confused and you don't know
+   -- the location. need to keep track of pre-invisible monster locations better to prevent this
+
     stop_running()
     return
   end
 
   if text:find("suddenly seem different") then
+    invisible_monster_name = nil
+    invisible_waypoint_exists = false
     stop_escaping()
     return
   end
@@ -2253,8 +2274,13 @@ function debug_escape()
 end
 
 function debug()
-  print(can_stair_dance())
-  print(c_persist.dancing.name)
+  local m = monster.get_monster_at(crawl.get_target())
+
+  print(has_spell(m, "Symbol of Torment"))
+  print(has_spell(m, "Symbol of Torment2"))
+
+  --print(can_stair_dance())
+  --print(c_persist.dancing.name)
 end
 
 function ch_start_running(kind)

@@ -131,8 +131,6 @@ local ENTER_KEY = string.char(13)
 
 local running = false
 local no_reachable_target = false
-local stair_dancing = false
-local repetitions = {}
 
 local invisible_waypoint_exists = false
 local invisible_monster_name = nil
@@ -163,6 +161,14 @@ function stop_running()
 end
 
 function ready()
+  crawl.enable_more(false)
+  crawl.more_autoclear(true)
+
+  if c_persist.flags and c_persist.flags["exclude"] then
+    c_persist.flags["exclude"] = false
+    clear_exclusions()
+  end
+
   if housekeeping() then
     run()
   end
@@ -172,7 +178,8 @@ function housekeeping()
   if you.turns() == 0 then
     c_persist.cleared_depth = {}
     c_persist.found = {}
-	c_persist.flags = {}
+    c_persist.flags = {}
+    c_persist.stop_cause = nil
     c_persist.where = you.where()
     train()
   end
@@ -198,12 +205,11 @@ function housekeeping()
   end
 
   if no_reachable_target then
-    if not attempt_mini_explore() and not attempt_mini_escape() then
-      stop_running()
+    if not attempt_mini_explore() then
+      -- c_persist.flags["???"]
     end
 
     no_reachable_target = false
-    return false
   end
 
   return true
@@ -229,38 +235,21 @@ function train()
 end
 
 function run(stepping)
-  if stair_dancing and is_stuck(you.branch() .. you.depth() .. "dance") then
-    stair_dancing = false
-	stop_escaping()
-  end
 
-  if stair_dancing then
-    print("STAIR DANCING!!!", 6)
-
-    if not can_stair_dance() then
-      stair_dancing = false
-      stop_escaping()
-    end
-
-    if is_up_stairs(0, 0) then
-      crawl.sendkeys("<")
-	  return
-    end
-
-    if not is_escaping() then
-      stair_dancing = false
-    else
-      escape()
-	end
-
-    return
-  end
 
   if is_scared() or is_escaping() then
     stop_running()
     print("SCARED!", 6)
   end
   if running or stepping then
+
+    if can_stair_dance() and escape() then
+print("FOO")
+      return
+    end
+
+
+
     -- todo: handle autoclear better
     crawl.more_autoclear(true)
     if is_escaping() then
@@ -277,11 +266,6 @@ function run(stepping)
         end
         return
       end
-      if can_stair_dance() then
-        stair_dancing = true
-		start_escaping()
-        return
-      end
       if must_hand() then
         crawl.sendkeys("ab")
         return
@@ -293,7 +277,7 @@ function run(stepping)
       tab(true)
     end
   else
-    crawl.more_autoclear(false)
+    --crawl.more_autoclear(false)
   end
 end
 
@@ -304,11 +288,6 @@ end
 ---------------------------------------------------------------------------
 -- exploration                                                           --
 ---------------------------------------------------------------------------
-
-function is_stuck(key)
-  repetitions[key] = (repetitions[key] or 0) + 1
-  return repetitions[key] >= 100
-end
 
 function must_rest()
   return is_after_berserk() or
@@ -360,7 +339,7 @@ function explore()
   end
   if not attempt("o") then
     if safe_to_descend() then
-      if not attempt("G" .. goal() .. ENTER_KEY, "branch") then
+      if not attempt_goal() then
         stop_running()
       end
       return
@@ -418,27 +397,46 @@ function safe_to_descend()
   return true
 end
 
+function attempt_goal()
+  return attempt("G" .. goal() .. ENTER_KEY .. ENTER_KEY, "branch")
+end
+
 function goal()
   if c_persist.found["Temple"] and c_persist.cleared_depth["Temple"] ~= 1 then
     return "T"
   end
+
   if c_persist.found["Lair"] then
     if c_persist.cleared_depth["Lair"] ~= 6 then
       return "L" .. cleared_depth("Lair") + 1
     end
+
     if c_persist.found["Orc"] and c_persist.cleared_depth["Orc"] ~= 2 then
       return "O" .. cleared_depth("Orc") + 1
     end
   end
+
   if c_persist.cleared_depth["D"] ~= 15 then
       return "D" .. cleared_depth("D") + 1
   end
+
   return ""
 end
 
 ---------------------------------------------------------------------------
 -- combat                                                                --
 ---------------------------------------------------------------------------
+
+function monsters(radius)
+  local result = {}
+
+  for _, a in ipairs(points(radius)) do
+    local b = monster.get_monster_at(a.x, a.y)
+    if b and not b:is_safe() then util.append(result, {b}) end
+  end
+
+  return result
+end
 
 function is_fearless()
   if not running then
@@ -459,29 +457,36 @@ function tab(is_reckless)
     print("You are too injured to fight recklessly!")
     return
   end
+
   if you.caught() then
     crawl.sendkeys("b")
     return
   end
+
   if not avoid_dangerous_clouds() then
     stop_running()
     return
   end
+
   if is_invisible_monster_present() then
     if find_invisible(1) then
       crawl.sendkeys("*" .. to_key(find_invisible(1)))
       return
     end
+
     if no_visible_monsters_present() then
       if invisible_waypoint_exists then
         local x, y = travel.waypoint_delta(0)
+
         if x == 0 and y == 0 then
           invisible_waypoint_exists = false
+
           if not attempt_mini_escape() then
             stop_running()
           end
           return
         end
+
         if traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
           crawl.sendkeys(to_key(clamp(-x, -1, 1), clamp(-y, -1, 1)))
           return
@@ -489,15 +494,19 @@ function tab(is_reckless)
           invisible_waypoint_exists = false
         end
       end
+
       if not attempt_mini_escape() then
         stop_running()
       end
+
       return
     end
   end
+
   if you.confused() and hit_closest_monster() then
     return
   end
+
   crawl.sendkeys(TAB_KEY)
 end
 
@@ -568,8 +577,24 @@ function can_kite()
 end
 
 function can_stair_dance()
-  -- need to handle undead, summons, "incapable of using stairs", :is("summoned")
-  return you.absdepth() > 1 and count_monsters() > count_monsters(1) and can_see_up_stairs()
+  if you.absdepth() == 1 or not can_see_up_stairs() then return false end
+  if c_persist.stop_cause and c_persist.stop_cause.count >= 10 then return false end
+
+  -- avoids stair dancing if only undead monsters are adjacent
+
+  local can_not_use_stairs = function(monster)
+    return not can_use_stairs(monster)
+  end
+
+  if count_monsters(1, can_use_stairs) == 0 and count_monsters(1, can_not_use_stairs) > 0 then
+    return false
+  end
+
+  return count_monsters() > count_monsters(1)
+end
+
+function can_use_stairs(monster)
+  return not monster:desc(true):find("incapable of using stairs")
 end
 
 function can_see_up_stairs(radius)
@@ -577,7 +602,8 @@ function can_see_up_stairs(radius)
   for a = -radius, radius do
     for b = -radius, radius do
       if is_up_stairs(a, b) and you.see_cell_no_trans(a, b) then
-        return a, b
+        -- return a, b
+        return true
       end
     end
   end
@@ -610,37 +636,9 @@ function find_monster(name)
   end
 end
 
-function count_monsters(radius)
-  radius = radius or 8
-  local result = 0
-  for a = -radius, radius do
-    for b = -radius, radius do
-      local c = monster.get_monster_at(a, b)
-      if c and not c:is_safe() then
-        result = result + 1
-      end
-    end
-  end
-  return result
-end
-
-function count_monsters2(radius)
-  radius = radius or 8
-  local result = 0
-  for a = -radius, radius do
-    for b = -radius, radius do
-      local c = monster.get_monster_at(a, b)
-      if c and not c:is_safe() then
-	    print(c:name())
-		print(you.see_cell(c:pos()))
-		print(you.see_cell_no_trans(c:pos()))
-		print(you.see_cell_solid(c:pos()))
-		print(you.see_cell_solid_see(c:pos()))
-        result = result + 1
-      end
-    end
-  end
-  return result
+function count_monsters(radius, f)
+  if f then return length(where(monsters(radius), f)) end
+  return length(monsters(radius))
 end
 
 function is_angry()
@@ -851,8 +849,7 @@ end
 
 function hp_percent()
   local a, b = you.hp()
-  a = you.poison_survival() or a
-  return 100 * a / b
+  return 100 * (you.poison_survival() or a) / b
 end
 
 function mp_percent()
@@ -861,26 +858,20 @@ function mp_percent()
 end
 
 function closest_monster(radius)
-  radius = radius or 8
-  local result = nil
-  local result_distance = radius
-  local result_threat = 0
-  for a = -radius, radius do
-    for b = -radius, radius do
-      local c = monster.get_monster_at(a, b)
-      if c and not c.is_safe(c) then
-        local d = distance(c.pos(c))
-        local threat = calculate_threat(c)
-        if d < result_distance or
-            d == result_distance and threat > result_threat then
-          result = c
-          result_distance = d
-          result_threat = threat
-        end
-      end
-    end
+  local less_than = function(a, b)
+    local da = distance(a:pos())
+	local db = distance(b:pos())
+
+    if da == db then
+	  return calculate_threat(a) < calculate_threat(b)
+	end
+
+    return da < db
   end
-  return result
+
+  local t = monsters(radius)
+  table.sort(t, less_than)
+  return first(t)
 end
 
 function hit_closest_monster()
@@ -992,6 +983,14 @@ function is_escaping()
   return c_persist.flags["escaping"] or false
 end
 
+function start_escaping()
+  c_persist.flags["escaping"] = true
+end
+
+function stop_escaping()
+  c_persist.flags["escaping"] = false
+end
+
 function attempt_mini_escape()
   -- does not avoid bumping into monsters
   if view.feature_at(0, 0) == "exit_dungeon" then
@@ -1003,14 +1002,6 @@ function attempt_mini_escape()
   return attempt("X<." .. ESCAPE_KEY, "escape")
 end
 
-function stop_escaping()
-  c_persist.flags["escaping"] = false
-end
-
-function start_escaping()
-  c_persist.flags["escaping"] = true
-end
-
 function escape()
   if view.feature_at(0, 0) == "exit_dungeon" then
     return false
@@ -1020,14 +1011,17 @@ function escape()
     return attempt("<", "escape")
   end
 
-  local stairs = first(where(points(1), function(a)
-    return is_up_stairs(a.x, a.y) and traversable(a.x, a.y)
-  end))
+  local f = function(point)
+    return is_up_stairs(point.x, point.y) and traversable(point.x, point.y)
+  end
+
+  local stairs = first(where(points(1), f))
 
   if stairs then
     return attempt(to_key(stairs.x, stairs.y), "escape")
   end
 
+  c_persist.flags["exclude"] = true
   return attempt("X<." .. ESCAPE_KEY, "escape")
 end
 
@@ -1992,8 +1986,14 @@ function print(value, channel)
   crawl.mpr(tostring(value), channel)
 end
 
-function print_point(point, channel)
-  crawl.mpr("(" .. point.x .. ", " .. point.y .. ")", channel)
+function point_to_string(point)
+  if point == nil then return tostring(nil) end
+  return "(" .. point.x .. ", " .. point.y .. ")"
+end
+
+function monster_to_string(monster)
+  if monster == nil then return tostring(nil) end
+  return monster:name()
 end
 
 function to_key(x, y)
@@ -2028,7 +2028,7 @@ function points(radius)
   for x = -radius, radius do
     for y = -radius, radius do
       util.append(result, {point(x, y)})
-	end
+    end
   end
 
   return result
@@ -2101,22 +2101,22 @@ function c_message(text, channel)
 
   if text:find("suddenly seem different") then
     stop_escaping()
-	return
+    return
   end
 
   if text:find("to the Ecumenical Temple") then
     c_persist.found["Temple"] = true
-	return
+    return
   end
 
   if text:find("to the Lair") then
     c_persist.found["Lair"] = true
-	return
+    return
   end
 
   if text:find("to the Orc") then
     c_persist.found["Orc"] = true
-	return
+    return
   end
 
   if text:find("explore") or text:find("exploring") then
@@ -2128,7 +2128,16 @@ function c_message(text, channel)
   end
 
   if text:find("reachable target") or text:find("move towards target") then
-    no_reachable_target = true
+
+    -- todo: add logic to handle unreachable electric eels
+
+    if not attempt_mini_explore() and not attempt_goal() then
+
+      -- todo: handle being stuck
+
+      stop_running()
+    end
+
     return
   end
 
@@ -2230,20 +2239,36 @@ function debug_escape()
 end
 
 function debug()
-  debug_escape()
+  print(can_stair_dance())
 end
 
 function ch_start_running(kind)
-  -- now i just have to check if escaping, and clear escaping when changing floors or teleporting!
-  -- buggy if the travel target is adjacent and had a mob on it
-  if kind == "intertravel" then
+  if kind == "intertravel" and c_persist.flags["exclude"] then
     exclude_monsters()
   end
 end
 
 function ch_stop_running(kind)
-  if kind == "intertravel" then
-    clear_exclusions()
+  if can_stair_dance() then
+    local monster = closest_monster()
+
+    if monster then
+      local previous = c_persist.stop_cause
+      local current = {name = monster:name(), x = monster:x_pos(), y = monster:y_pos(), count = 1}
+
+      -- verifying the location too might be too much
+
+      if previous and
+	      previous.name == current.name and
+	      previous.x == current.x and
+		  previous.y == current.y then
+        previous.count = previous.count + 1
+      else
+        c_persist.stop_cause = current
+	  end
+	  
+	  print("COUNT: " .. c_persist.stop_cause.count)
+    end
   end
 end
 

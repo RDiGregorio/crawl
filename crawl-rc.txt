@@ -218,7 +218,7 @@ function run(stepping)
     if is_safe() then
       explore()
     else
-      if no_monsters_present() then
+      if not monster_present() then
 
         -- helps with clouds
 
@@ -448,7 +448,7 @@ function tab(is_reckless)
       return
     end
 
-    if no_visible_monsters_present() then
+    if not is_visible_monster_present() then
       if invisible_waypoint_exists then
         local x, y = travel.waypoint_delta(0)
 
@@ -531,7 +531,7 @@ function can_walk_away()
 
   -- todo: in some cases you can walk away while berserk or slow
 
-  if you.berserk() or you.slowed() or any_fast_monster(1) then return false end
+  if you.berserk() or you.slowed() or util.exists(monsters(1), is_fast_monster) then return false end
 
   local predicate = function(monster)
     return monster:has_known_ranged_attack()
@@ -591,31 +591,16 @@ function can_see_up_stairs(radius)
   return length(where(points(radius), predicate)) > 0
 end
 
-function any_fast_monster(radius)
-  radius = radius or 8
-  for a = -radius, radius do
-    for b = -radius, radius do
-      local c = monster.get_monster_at(a, b)
-      if c and not c:is_safe() and is_fast_monster(c) then
-        return c
-      end
-    end
-  end
+function is_fast_monster(monster)
+  return monster:speed_description():find("fast")
 end
 
-function is_fast_monster(target)
-  return target:speed_description():find("fast")
+function is_monster(monster, pattern)
+  return monster:name():find(pattern)
 end
 
-function find_monster(name)
-  for a = -8, 8 do
-    for b = -8, 8 do
-      local c = monster.get_monster_at(a, b)
-      if c and not c:is_safe() and c:name():find(name) then
-        return c
-      end
-    end
-  end
+function find_monster(pattern, radius)
+  return first(where(monsters(radius), function(monster) return is_monster(monster, pattern) end))
 end
 
 function count_monsters(radius, f)
@@ -667,10 +652,10 @@ function has_spell(monster, name)
   end
 
   local is_matching_book = function(book)
-    return any(book, is_matching_spell)
+    return util.exists(book, is_matching_spell)
   end
 
-  return any(monster:spells(), is_matching_book)
+  return util.exists(monster:spells(), is_matching_book)
 end
 
 function has_electrocution_weapon(monster)
@@ -736,15 +721,12 @@ function is_extra_hard(target)
   return calculate_threat(target) > 2 ^ target:threat()
 end
 
-function print_extra_hard_monsters()
-  for a = -8, 8 do
-    for b = -8, 8 do
-      local c = monster.get_monster_at(a, b)
-      if c and not c:is_safe() and is_extra_hard(c) then
-        print(c:name() .. " (" .. danger_text(calculate_threat(c)) .. ")", 6)
-      end
-    end
+function print_extra_hard_monsters(radius)
+  local f = function(monster)
+    print(monster:name() .. " (" .. danger_text(calculate_threat(monster)) .. ")", 6)
   end
+
+  util.foreach(where(monsters(radius), is_extra_hard), f)
 end
 
 function calculate_threat(target)
@@ -807,9 +789,7 @@ function calculate_threat(target)
 
   -- weapons
 
-  if has_electrocution_weapon(target) or
-      has_chaos_weapon(target) or
-      has_distortion_weapon(target) then
+  if has_electrocution_weapon(target) or has_chaos_weapon(target) or has_distortion_weapon(target) then
     result = math.max(result, 3)
   end
 
@@ -824,29 +804,16 @@ function calculate_invisible_threat()
   return 0
 end
 
-function no_visible_monsters_present()
-  for a = -8, 8 do
-    for b = -8, 8 do
-      local c = monster.get_monster_at(a, b)
-      if c and not c.is_safe(c) then
-        return false
-      end
-    end
-  end
-  return true
+function is_visible_monster_present(radius)
+  return length(monsters(radius)) > 0
 end
 
-function no_monsters_present()
-  return no_visible_monsters_present() and
-      not is_invisible_monster_present()
+function monster_present()
+  return not is_visible_monster_present() and is_invisible_monster_present()
 end
 
 function is_safe()
-
-  -- todo: need to handle non-agressive monsters
-
-  if length(monsters()) > 0 then return false end
-  return you.feel_safe() and not is_invisible_monster_present()
+  return you.feel_safe() and not monster_present()
 end
 
 function hp_percent()
@@ -910,15 +877,13 @@ function is_traversable(x, y)
       view.cloud_at(x, y) ~= "calcifying dust"
 end
 
+function invisible_monsters(radius)
+  return where(points(radius), function(point) return view.invisible_monster(point.x, point.y) end)
+end
+
 function find_invisible(radius)
-  radius = radius or 8
-  for a = -radius, radius do
-    for b = -radius, radius do
-      if view.invisible_monster(a, b) then
-        return a, b
-      end
-    end
-  end
+  local point = first(invisible_monsters(radius))
+  return point.x, point.y
 end
 
 function guess_invisible()
@@ -932,7 +897,7 @@ function guess_invisible()
 end
 
 function is_invisible_monster_present()
-  return not options.autopick_on or find_invisible()
+  return not options.autopick_on or length(invisible_monsters()) > 0
 end
 
 function update_invisible_waypoint()
@@ -2074,22 +2039,6 @@ function map(t, f)
   return result
 end
 
-function any(t, f)
-  for _, a in ipairs(t) do
-    if f(a) then return true end
-  end
-
-  return false
-end
-
-function all(t, f)
-  for _, a in ipairs(t) do
-    if not f(a) then return false end
-  end
-
-  return true
-end
-
 ---------------------------------------------------------------------------
 -- hooks                                                                 --
 ---------------------------------------------------------------------------
@@ -2274,13 +2223,7 @@ function debug_escape()
 end
 
 function debug()
-  local m = monster.get_monster_at(crawl.get_target())
-
-  print(has_spell(m, "Symbol of Torment"))
-  print(has_spell(m, "Symbol of Torment2"))
-
-  --print(can_stair_dance())
-  --print(c_persist.dancing.name)
+  if find_monster("foo") then print("FOO!") end
 end
 
 function ch_start_running(kind)

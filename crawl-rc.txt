@@ -18,21 +18,15 @@
 
 # add logic to bia when piety > 4
 # improve logic for when you can't reach an electric eel
-# stair dancing can be stuck in a loop if the monster being danced in unreachable
-# count up stairs per floor, cap it at something reasonable like 100?
-
-# HAVE TO PREVENT UNDEAD FROM BEING STAIR DANCED
+# run on torment
+# add hallway preference
 
 -------------------------------------------------------------------------
 -- options                                                             --
 -------------------------------------------------------------------------
 
-# prevents accidental resting or abilities
-
 bindkey = [s] CMD_NO_CMD_DEFAULT
 bindkey = [p] CMD_NO_CMD_DEFAULT
-
-# speeds up gameplay
 
 travel_delay = -1
 travel_key_stop = false
@@ -42,39 +36,9 @@ explore_auto_rest = true
 rest_wait_both = true
 show_more = false
 easy_confirm = all
-
-# other options
-
 automagic_enable = true
 autofight_stop = 0
 travel_one_unsafe_move = true
-
-force_more_message += you miscast
-force_more_message += know that spell
-force_more_message += unable to access your magic
-force_more_message += too confused to cast spells
-force_more_message += wracked with pain
-force_more_message += powers of darkness
-force_more_message += horrible wounds
-force_more_message += back at you
-force_more_message += magic feels tainted
-force_more_message += mighty Pandemonium lord
-force_more_message += grow feeble
-force_more_message += are being watched
-
-#force_more_message += smites you
-
-#force_more_message += feel yourself slow down
-#force_more_message += flicker back into view
-#force_more_message += winds around you calm down
-#force_more_message += translocation energy dissipates
-#force_more_message += resists
-#force_more_message += struggles to resist
-
-#force_more_message += transformation is almost over
-#force_more_message += back to life
-#runrest_stop_message += transformation is almost over
-#runrest_stop_message += back to life
 
 explore_stop = stairs, shops, altars, portals, branches, runed_doors
 explore_stop += greedy_pickup
@@ -130,7 +94,6 @@ local TAB_KEY = string.char(9)
 local ENTER_KEY = string.char(13)
 
 local running = false
-local no_reachable_target = false
 
 local invisible_waypoint_exists = false
 local invisible_monster_name = nil
@@ -179,7 +142,7 @@ function housekeeping()
     c_persist.cleared_depth = {}
     c_persist.found = {}
     c_persist.flags = {}
-    c_persist.stop_cause = nil
+    c_persist.dancing = nil
     c_persist.where = you.where()
     train()
   end
@@ -190,26 +153,13 @@ function housekeeping()
     stop_escaping()
   end
 
+  c_persist.where = you.where()
+
   crawl.redraw_screen()
   print_information()
 
   if is_invisible_monster_present() then
     update_invisible_waypoint()
-  end
-
-  if is_escaping() then
-    if is_up_stairs(0, 0) then
-      stop_escaping()
-      return false
-    end
-  end
-
-  if no_reachable_target then
-    if not attempt_mini_explore() then
-      -- c_persist.flags["???"]
-    end
-
-    no_reachable_target = false
   end
 
   return true
@@ -219,10 +169,13 @@ function print_information()
   local threat_level = adjusted_threat()
   local channel = nil
   local message = "Danger: "
+
   message = message .. math.floor(danger_percent()) .. "% (" .. danger_text(threat_level) .. ")"
+
   if threat_level >= IMPOSSIBLE then
     channel = 6
   end
+
   print(message, channel)
   print_extra_hard_monsters()
 end
@@ -235,49 +188,53 @@ function train()
 end
 
 function run(stepping)
+  if is_scared() then
 
+    if can_walk_away() then
+      start_escaping()
+    end
 
-  if is_scared() or is_escaping() then
     stop_running()
-    print("SCARED!", 6)
+    print("SCARED. CAN WALK AWAY: " .. tostring(can_walk_away()), 6)
   end
+
   if running or stepping then
 
+    -- todo: clean this up
+
+    if is_escaping() and escape() then
+      return
+    end
+
     if can_stair_dance() and escape() then
-print("FOO")
       return
     end
 
-
-
-    -- todo: handle autoclear better
-    crawl.more_autoclear(true)
-    if is_escaping() then
-      escape()
-      return
-    end
     if is_safe() then
       explore()
     else
       if no_monsters_present() then
+
         -- helps with clouds
+
         if not attempt_mini_explore() then
           stop_running()
         end
         return
       end
+
       if must_hand() then
         crawl.sendkeys("ab")
         return
       end
+
       if must_berserk() then
         crawl.sendkeys("aa")
         return
       end
+
       tab(true)
     end
-  else
-    --crawl.more_autoclear(false)
   end
 end
 
@@ -307,45 +264,48 @@ function is_after_berserk()
 end
 
 function explore()
-  if is_safe() then
-    if you.berserk() or must_rest() then
-      if not attempt("5") then
-        stop_running()
-      end
-      return
+  if you.berserk() or must_rest() then
+    if not attempt("5") then
+      stop_running()
     end
-    if remove_curse() then
-      return
-    end
-    if identify_items() then
-      return
-    end
-    if upgrade_equipment() then
-      return
-    end
-    if remove_dangerous_rings() then
-      return
-    end
-    if drop_junk() then
-      return
-    end
-  else
-    stop_running()
     return
   end
+
+  if remove_curse() then
+    return
+  end
+
+  if identify_items() then
+    return
+  end
+
+  if upgrade_equipment() then
+    return
+  end
+
+  if remove_dangerous_rings() then
+    return
+  end
+
+  if drop_junk() then
+    return
+  end
+
   if shafted() then
     unshaft()
     return
   end
-  if not attempt("o") then
-    if safe_to_descend() then
-      if not attempt_goal() then
-        stop_running()
-      end
-      return
+
+  if you.depth() > cleared_depth() then
+    if not attempt("o") then
+      stop_running()
     end
+	return
+  end
+
+  if not attempt_goal() then
     stop_running()
-    return
+	return
   end
 end
 
@@ -390,13 +350,6 @@ function unshaft()
   end
 end
 
-function safe_to_descend()
-  -- todo: this needs work
-  --return you.depth() == travel.find_deepest_explored(you.branch()) or
-  --    you.depth() < cleared_depth()
-  return true
-end
-
 function attempt_goal()
   return attempt("G" .. goal() .. ENTER_KEY .. ENTER_KEY, "branch")
 end
@@ -426,6 +379,29 @@ end
 ---------------------------------------------------------------------------
 -- combat                                                                --
 ---------------------------------------------------------------------------
+
+function panic()
+
+  -- todo: conditionally use hand, bia, ambrosia, healing, curing
+
+  if not you.teleporting() and teleport() then return true end
+  return false
+end
+
+function teleport()
+  for item in inventory() do
+    if item.class(true) == "scroll" and item.subtype() == "teleportation" then
+      return read_scroll(items.index_to_letter(item.slot))
+    end
+  end
+
+  return false
+end
+
+function can_read()
+  if you.status():find("cannot breathe") then return false end
+  return not you.silenced() and not you.confused() and not you.berserk()
+end
 
 function monsters(radius)
   local result = {}
@@ -487,7 +463,7 @@ function tab(is_reckless)
           return
         end
 
-        if traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
+        if is_traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
           crawl.sendkeys(to_key(clamp(-x, -1, 1), clamp(-y, -1, 1)))
           return
         else
@@ -545,42 +521,35 @@ function must_start_escaping()
   return false
 end
 
-function can_escape()
-  if is_scared() then
-    return false
-  end
-  if you.berserk() or any_fast_monster(1) then
-    return false
-  end
-  if you.absdepth() == 1 and not you.have_orb() then
-    return false
-  end
-  return true
-end
 
-function can_kite()
-  -- need to think about this a lot more
-  local names = {}
-  if any_fast_monster(1) then return false end
-  for a = -8, 8 do
-    for b = -8, 8 do
-      local c = monster.get_monster_at(a, b)
-      if c and not c:is_safe() then
-        if target:has_known_ranged_attack() or
-            util.exists(names, function(name) return c:name():find(name) end) then
-          return false
-        end
-      end
-    end
+function can_walk_away()
+  -- this is just a starting point, and needs to be improved
+
+  if can_stair_dance() then return true end
+
+  if you.depth() <= cleared_depth() then return false end
+
+  if true then return true end
+
+  -- todo: in some cases you can walk away while berserk or slow
+
+  if you.berserk() or you.slowed() or any_fast_monster(1) then return false end
+
+  local predicate = function(monster)
+    return monster:has_known_ranged_attack()
   end
+
+  -- todo: in some cases you can walk away from monsters with ranged attacks
+
+  if length(where(monsters(), predicate)) > 0 then return false end
+
   return true
 end
 
 function can_stair_dance()
   if you.absdepth() == 1 or not can_see_up_stairs() then return false end
-  if c_persist.stop_cause and c_persist.stop_cause.count >= 10 then return false end
 
-  -- avoids stair dancing if only undead monsters are adjacent
+  -- prevents stair dancing if only undead monsters are adjacent
 
   local can_not_use_stairs = function(monster)
     return not can_use_stairs(monster)
@@ -590,7 +559,26 @@ function can_stair_dance()
     return false
   end
 
-  return count_monsters() > count_monsters(1)
+  local result = count_monsters() > count_monsters(1)
+
+  -- prevents infinite stair dancing loops
+
+  if result then
+    local monster = closest_monster()
+    local previous = c_persist.dancing
+    local current = {name = monster:name(), count = 1}
+
+    if previous and previous.name == current.name then
+      previous.count = previous.count + 1
+	  if previous.count >= 20 then return false end
+    else
+      c_persist.dancing = current
+    end
+
+    return true
+  end
+
+  return false
 end
 
 function can_use_stairs(monster)
@@ -598,15 +586,11 @@ function can_use_stairs(monster)
 end
 
 function can_see_up_stairs(radius)
-  radius = radius or 8
-  for a = -radius, radius do
-    for b = -radius, radius do
-      if is_up_stairs(a, b) and you.see_cell_no_trans(a, b) then
-        -- return a, b
-        return true
-      end
-    end
+  local predicate = function(point)
+    return is_up_stairs(point.x, point.y) and you.see_cell_no_trans(point.x, point.y)
   end
+
+  return length(where(points(radius), predicate)) > 0
 end
 
 function any_fast_monster(radius)
@@ -644,7 +628,9 @@ end
 function is_angry()
   local adjacent = adjusted_threat(1)
   local total = adjusted_threat()
+
   -- berserk is used at 75% health against monsters with yellow names
+
   return adjacent >= MEDIUM and total >= MEDIUM * 4 / 3
 end
 
@@ -671,7 +657,7 @@ function is_scared()
     end
     if not is_fearless() then
        -- experimental
-      return adjusted_threat() >= NIGHTMARE * 4 / 3 -- IMPOSSIBLE
+      return adjusted_threat() >= IMPOSSIBLE
     end
   end
   return false
@@ -772,36 +758,57 @@ function print_extra_hard_monsters()
 end
 
 function calculate_threat(target)
-  local hard = {}
+  local hard = {"Natasha"}
+
   -- early game
+
   util.append(hard, {"worm", "gnoll"})
+
   -- mid game
+
   util.append(hard, {"dream sheep", "hydra", "manticore"})
+
   -- late game
+
   util.append(hard, {"ugly thing", "boggart", "lurking horror"})
+
   -- giants
+
   util.append(hard, {"ogre", "cyclops", "ettin", "titan", "juggernaut"})
+
   -- resistances
+
   if not (you.res_poison() > 0) then
     util.append(hard, {"adder"})
   end
+
   if not (you.res_shock() > 0) then
     util.append(hard, {"sky beast", "electric eel", "shock serpent", "spark wasp", "electric golem"})
   end
+
   if not you.res_corr() then
     util.append(hard, {"jelly"})
   end
+
   local result = target:threat()
+
   for _, name in ipairs(hard) do
     if target:name():find(name) then
       result = result + 1
     end
   end
-  -- weapons, spells, and abilities
-  if target:is("berserk") or
-      has_electrocution_weapon(target) or
+
+  -- weapons
+
+  if has_electrocution_weapon(target) or
       has_chaos_weapon(target) or
-      has_distortion_weapon(target) or
+      has_distortion_weapon(target) then
+    result = math.max(result, 3)
+  end
+
+  -- spells and abilities
+
+  if target:is("berserk") or
       has_spell(target, "Smiting") or
       has_spell(target, "Banishment") or
       has_spell(target, "Petrify") or
@@ -815,6 +822,7 @@ function calculate_threat(target)
       has_spell(target, "Flay") then
     result = result + 1
   end
+
   return 2 ^ result
 end
 
@@ -844,6 +852,10 @@ function no_monsters_present()
 end
 
 function is_safe()
+
+  -- todo: need to handle non-agressive monsters
+
+  if length(monsters()) > 0 then return false end
   return you.feel_safe() and not is_invisible_monster_present()
 end
 
@@ -858,15 +870,15 @@ function mp_percent()
 end
 
 function closest_monster(radius)
-  local less_than = function(a, b)
-    local da = distance(a:pos())
-	local db = distance(b:pos())
+  local less_than = function(left, right)
+    local left_distance = distance(left:pos())
+	local right_distance = distance(right:pos())
 
-    if da == db then
-	  return calculate_threat(a) < calculate_threat(b)
+    if left_distance == right_distance then
+	  return calculate_threat(left) < calculate_threat(right)
 	end
 
-    return da < db
+    return left_distance < right_distance
   end
 
   local t = monsters(radius)
@@ -888,13 +900,13 @@ function hit_closest_monster()
 end
 
 function approach(x, y)
-  if distance(x, y) == 1 and not traversable(x, y) then
+  if distance(x, y) == 1 and not is_traversable(x, y) then
     return false
   end
   for a = -1, 1 do
     for b = -1, 1 do
       if cartesian_distance(x, y, a, b) < cartesian_distance(x, y)
-          and traversable(a, b) then
+          and is_traversable(a, b) then
         return attempt(to_key(a, b), "approach")
       end
     end
@@ -902,7 +914,7 @@ function approach(x, y)
   return false
 end
 
-function traversable(x, y)
+function is_traversable(x, y)
   return travel.feature_traversable(view.feature_at(x, y)) and
       not monster.get_monster_at(x, y) and
       view.cloud_at(x, y) ~= "calcifying dust"
@@ -922,7 +934,10 @@ end
 function guess_invisible()
   if invisible_waypoint_exists then
     local x, y = travel.waypoint_delta(0)
-    return -x, -y
+
+    if x and y then
+      return -x, -y
+    end
   end
 end
 
@@ -955,7 +970,7 @@ function closest_adjacent_traversable(x, y)
   local adjacent = {}
   for a = -1, 1 do
     for b = -1, 1 do
-      if not (a == 0 and b == 0) and traversable(a, b) then
+      if not (a == 0 and b == 0) and is_traversable(a, b) then
         local cell = point(a, b)
         adjacent[table.getn(adjacent) + 1] = cell
       end
@@ -1003,22 +1018,15 @@ function attempt_mini_escape()
 end
 
 function escape()
-  if view.feature_at(0, 0) == "exit_dungeon" then
-    return false
-  end
+  if you.absdepth() == 1 and not you.have_orb() then return false end
+  if is_up_stairs(0, 0) then return attempt("<", "escape") end
+  local stairs = where(points(1), function(p) return is_up_stairs(p.x, p.y) end)
 
-  if is_up_stairs(0, 0) then
-    return attempt("<", "escape")
-  end
-
-  local f = function(point)
-    return is_up_stairs(point.x, point.y) and traversable(point.x, point.y)
-  end
-
-  local stairs = first(where(points(1), f))
-
-  if stairs then
-    return attempt(to_key(stairs.x, stairs.y), "escape")
+  if length(stairs) > 0 then
+    local traversable_stairs = where(stairs, function(p) return is_traversable(p.x, p.y) end)
+    local p = first(traversable_stairs)
+	if not p then return false end
+    return attempt(to_key(p.x, p.y), "escape")
   end
 
   c_persist.flags["exclude"] = true
@@ -1042,7 +1050,7 @@ end
 
 function any_traversable(cells)
   for _, cell in ipairs(cells) do
-    if traversable(cell.x, cell.y) then
+    if is_traversable(cell.x, cell.y) then
       return cell
     end
   end
@@ -1253,11 +1261,15 @@ function want_armour(item)
   if is_scales(item) then
     return true
   end
+
+  -- todo: this currently ignores branded robes
+
   if item.class(true) == "armour" then
     local best = best_ac(item.subtype())
     if item.ac > best then
       return true
     end
+
     if item.subtype() == "helmet" or
         item.subtype() == "cloak" or
         item.subtype() == "gloves" or
@@ -1265,6 +1277,7 @@ function want_armour(item)
       return item.branded
     end
   end
+
   return false
 end
 
@@ -1434,11 +1447,12 @@ function burdened()
 end
 
 function read_scroll(letter)
-  if you.silenced() then
-    return false
+  if can_read() then
+    crawl.sendkeys("r" .. letter)
+    return true
   end
-  crawl.sendkeys("r" .. letter)
-  return true
+
+  return false
 end
 
 ---------------------------------------------------------------------------
@@ -2240,35 +2254,12 @@ end
 
 function debug()
   print(can_stair_dance())
+  print(c_persist.dancing.name)
 end
 
 function ch_start_running(kind)
   if kind == "intertravel" and c_persist.flags["exclude"] then
     exclude_monsters()
-  end
-end
-
-function ch_stop_running(kind)
-  if can_stair_dance() then
-    local monster = closest_monster()
-
-    if monster then
-      local previous = c_persist.stop_cause
-      local current = {name = monster:name(), x = monster:x_pos(), y = monster:y_pos(), count = 1}
-
-      -- verifying the location too might be too much
-
-      if previous and
-	      previous.name == current.name and
-	      previous.x == current.x and
-		  previous.y == current.y then
-        previous.count = previous.count + 1
-      else
-        c_persist.stop_cause = current
-	  end
-	  
-	  print("COUNT: " .. c_persist.stop_cause.count)
-    end
   end
 end
 

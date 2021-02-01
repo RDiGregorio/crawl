@@ -205,7 +205,8 @@ function run(stepping)
     end
 
     stop_running()
-    print("SCARED. CAN WALK AWAY: " .. tostring(can_walk_away()), 6)
+
+    -- print("SCARED. CAN WALK AWAY: " .. tostring(can_walk_away()), 6)
   end
 
   if running or stepping then
@@ -302,23 +303,14 @@ function explore()
     return
   end
 
-  -- todo: this doesn't always work
-
-  if you.depth() > cleared_depth() then
-    if not attempt("o") then
-      stop_running()
-    end
-	return
-  end
-
-  if not attempt_goal() then
+  if not attempt("o") and not attempt_goal() then
     stop_running()
 	return
   end
 end
 
 function attempt_mini_explore()
-  return attempt("Xo." .. ESCAPE_KEY, "explore")
+  return attempt("Xo." .. ESCAPE_KEY, "attempt_mini_explore")
 end
 
 function is_up_stairs(x, y)
@@ -359,7 +351,7 @@ function unshaft()
 end
 
 function attempt_goal()
-  return attempt("G" .. goal() .. ENTER_KEY .. ENTER_KEY, "branch")
+  return attempt("G" .. goal() .. ENTER_KEY .. ENTER_KEY, "attempt_goal")
 end
 
 function goal()
@@ -521,6 +513,10 @@ end
 
 
 function can_walk_away()
+  -- disabled for now
+
+  if true then return false end
+
   -- this is just a starting point, and needs to be improved
 
   if can_stair_dance() then return true end

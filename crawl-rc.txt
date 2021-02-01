@@ -145,6 +145,7 @@ function housekeeping()
     c_persist.cleared_depth = {}
     c_persist.found = {}
     c_persist.flags = {}
+    c_persist.monsters = {}
     c_persist.dancing = nil
     c_persist.where = you.where()
     train()
@@ -671,6 +672,8 @@ function has_distortion_weapon(monster)
 end
 
 function threat(radius)
+  -- local result = sum(map(monsters(radius), calculate_threat))
+
   radius = radius or 8
   local result = 0
   local invisible_threat = 0
@@ -927,11 +930,11 @@ function closest_adjacent_traversable(x, y)
     for b = -1, 1 do
       if not (a == 0 and b == 0) and is_traversable(a, b) then
         local cell = point(a, b)
-        adjacent[table.getn(adjacent) + 1] = cell
+        adjacent[length(adjacent) + 1] = cell
       end
     end
   end
-  if table.getn(adjacent) > 0 then
+  if length(adjacent) > 0 then
     table.sort(adjacent, function(p0, p1)
       return distance(p0.x, p0.y, x, y) < distance(p1.x, p1.y, x, y)
     end)
@@ -1001,26 +1004,6 @@ end
 
 function clear_exclusions()
   crawl.sendkeys("X" .. control("e") .. ESCAPE_KEY)
-end
-
-function any_traversable(cells)
-  for _, cell in ipairs(cells) do
-    if is_traversable(cell.x, cell.y) then
-      return cell
-    end
-  end
-end
-
-function all_adjacent_up_stairs()
-  local adjacent = {}
-  for a = -1, 1 do
-    for b = -1, 1 do
-      if not (a == 0 and b == 0) and is_up_stairs(a, b) then
-        adjacent[table.getn(adjacent) + 1] = point(a, b)
-      end
-    end
-  end
-  return adjacent
 end
 
 ---------------------------------------------------------------------------
@@ -1398,7 +1381,7 @@ function inventory()
 end
 
 function burdened()
-  return table.getn(items.inventory()) > 47
+  return length(items.inventory()) > 47
 end
 
 function read_scroll(letter)
@@ -1951,8 +1934,28 @@ end
 -- general utility                                                       --
 ---------------------------------------------------------------------------
 
-function print(value, channel)
-  crawl.mpr(tostring(value), channel)
+function print(object, channel)
+  crawl.mpr(encode(object), channel)
+end
+
+function encode(object)
+  if type(object) == "string" then return '"' .. object .. '"' end
+
+  if type(object) == "table" then
+    local table = {}
+
+    for key, value in pairs(object) do
+      util.append(table, {encode(key) .. ": " .. encode(value)})
+    end
+
+    return "{" .. join(table) .. "}"
+  end
+
+ return tostring(object)
+end
+
+function sanitize(string)
+  return tostring(string:lower():gsub("[^%w]", "_"))
 end
 
 function point_to_string(point)
@@ -1963,6 +1966,10 @@ end
 function monster_to_string(monster)
   if monster == nil then return tostring(nil) end
   return monster:name()
+end
+
+function monster_to_table(monster)
+  return {name = sanitize(monster:name()), x = monster:x_pos(), y = monster:y_pos(), threat = calculate_threat(monster)}
 end
 
 function to_key(x, y)
@@ -2015,6 +2022,10 @@ function length(t)
   return table.getn(t)
 end
 
+function is_empty(t)
+  return length(t) == 0
+end
+
 function first(t)
   return t[1]
 end
@@ -2034,6 +2045,27 @@ function map(t, f)
 
   for _, a in ipairs(t) do
     util.append(result, {f(a)})
+  end
+
+  return result
+end
+
+function sum(t)
+  local result = 0
+
+  for _, a in ipairs(t) do
+    result = result + a
+  end
+
+  return result
+end
+
+function join(t)
+  local result = ""
+
+  for key, value in ipairs(t) do
+    result = result .. value
+	if key < length(t) then result = result .. ", " end
   end
 
   return result
@@ -2223,13 +2255,17 @@ function debug_escape()
 end
 
 function debug()
-  if find_monster("foo") then print("FOO!") end
+  print(encode(point(0, 0)))
 end
 
 function ch_start_running(kind)
   if kind == "intertravel" and c_persist.flags["exclude"] then
     exclude_monsters()
   end
+end
+
+function persist_monsters(radius)
+  util.foreach(map(monsters(radius), monster_to_table), function(t) c_persist.monsters[t.name] = t end)
 end
 
 }

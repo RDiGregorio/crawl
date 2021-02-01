@@ -219,7 +219,7 @@ function run(stepping)
     if is_safe() then
       explore()
     else
-      if not monster_present() then
+      if not is_monster_present() then
 
         -- helps with clouds
 
@@ -808,15 +808,15 @@ function calculate_invisible_threat()
 end
 
 function is_visible_monster_present(radius)
-  return length(monsters(radius)) > 0
+  return not is_empty(monsters(radius))
 end
 
-function monster_present()
-  return not is_visible_monster_present() and is_invisible_monster_present()
+function is_monster_present()
+  return is_visible_monster_present() or is_invisible_monster_present()
 end
 
 function is_safe()
-  return you.feel_safe() and not monster_present()
+  return you.feel_safe() and not is_monster_present()
 end
 
 function hp_percent()
@@ -2255,7 +2255,7 @@ function debug_escape()
 end
 
 function debug()
-  print(encode(point(0, 0)))
+  print(is_safe())
 end
 
 function ch_start_running(kind)

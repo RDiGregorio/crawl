@@ -27,10 +27,13 @@
 bindkey = [s] CMD_NO_CMD_DEFAULT
 bindkey = [p] CMD_NO_CMD_DEFAULT
 
+view_delay = 0
 travel_delay = -1
+rest_delay = -1
+use_animations = 0
+
 travel_key_stop = false
 show_travel_trail = false
-rest_delay = -1
 explore_auto_rest = true
 rest_wait_both = true
 show_more = false
@@ -63,9 +66,6 @@ message_colour += mute:Move the cursor to view the level map
 message_colour += mute:Returning to the game
 message_colour += mute:Waypoint 0
 
-use_animations -= beam, pickup, branch_entry
-#use_animations -= range, hp, monster_in_sight, monster, player
-
 species = ho
 background = be
 weapon = hand axe
@@ -94,7 +94,6 @@ local TAB_KEY = string.char(9)
 local ENTER_KEY = string.char(13)
 
 local running = false
-
 local attempt_turns = {}
 
 function attempt(keys, index)
@@ -102,12 +101,7 @@ function attempt(keys, index)
   -- returns false if called more than once in the same turn
 
   index = index or "default"
-  local turns = attempt_turns[index] or -1
-
-  if you.turns() == turns then
-    return false
-  end
-
+  if you.turns() == attempt_turns[index] then return false end
   attempt_turns[index] = you.turns()
   crawl.sendkeys(keys)
   return true
@@ -153,11 +147,9 @@ function housekeeping()
     train()
   end
 
-
   -- todo: this does not work in pan
 
   if c_persist.where ~= you.where() then cleanup() end
-
 
   c_persist.where = you.where()
   persist_monsters()
@@ -205,8 +197,6 @@ function run(stepping)
     end
 
     stop_running()
-
-    -- print("SCARED. CAN WALK AWAY: " .. tostring(can_walk_away()), 6)
   end
 
   if running or stepping then
@@ -272,45 +262,37 @@ end
 
 function explore()
   if you.berserk() or must_rest() then
-    if not attempt("5") then
+    if not attempt("5") and not attempt_unstuck() then
+
+      -- we are stuck
+
       stop_running()
     end
+
     return
   end
 
-  if remove_curse() then
-    return
-  end
+  if remove_curse() then return end
+  if identify_items() then return end
+  if upgrade_equipment() then return end
+  if remove_dangerous_rings() then return end
+  if drop_junk() then return end
 
-  if identify_items() then
-    return
-  end
+  if is_shafted() and not attempt_mini_escape() and not attempt("o") then
 
-  if upgrade_equipment() then
-    return
-  end
+    -- we are stuck
 
-  if remove_dangerous_rings() then
-    return
-  end
-
-  if drop_junk() then
-    return
-  end
-
-  if shafted() then
-    unshaft()
-    return
-  end
-
-  if not attempt("o") and not attempt_goal() then
     stop_running()
 	return
   end
-end
 
-function attempt_mini_explore()
-  return attempt("Xo." .. ESCAPE_KEY, "attempt_mini_explore")
+  if not attempt("o") and not attempt_goal() then
+
+    -- we are stuck
+
+    stop_running()
+	return
+  end
 end
 
 function is_up_stairs(x, y)
@@ -338,16 +320,8 @@ function cleared_depth(branch)
   return c_persist.cleared_depth[branch] or 0
 end
 
-function shafted()
+function is_shafted()
   return you.depth() > cleared_depth() + 1
-end
-
-function unshaft()
-  if not attempt_mini_escape() then
-    if not attempt("o") then
-      stop_running()
-    end
-  end
 end
 
 function attempt_goal()
@@ -459,9 +433,12 @@ function tab(is_reckless)
         return
       end
 
-      -- if no invisible monster has a last known location, escapes
+      -- no invisible monster has a last known location
 
-	  if not attempt_mini_escape() then
+	  if not attempt_unstuck() then
+
+        -- we are stuck
+
 	    stop_running()
 	  end
 
@@ -469,7 +446,13 @@ function tab(is_reckless)
     end
   end
 
-  if you.confused() and hit_closest_monster() then
+  -- attacks while confused
+
+  if you.confused() and not hit_closest_monster() then
+
+      -- we are stuck
+
+	  stop_running()
     return
   end
 
@@ -848,30 +831,18 @@ end
 
 function hit_closest_monster()
   local target = closest_monster()
-  if target then
-    local x, y = target.pos(target)
-    if distance(x, y) == 1 then
-      crawl.sendkeys("*" .. to_key(x, y))
-      return true
-    end
-    return approach(x, y)
-  end
-  return false
+  if not target then return false end
+  if distance(target:pos()) == 1 then return attempt("*" .. to_key(target:pos()), "hit_closest_monster") end
+  return attempt_approach(x, y)
 end
 
-function approach(x, y)
-  if distance(x, y) == 1 and not is_traversable(x, y) then
-    return false
-  end
-  for a = -1, 1 do
-    for b = -1, 1 do
-      if cartesian_distance(x, y, a, b) < cartesian_distance(x, y)
-          and is_traversable(a, b) then
-        return attempt(to_key(a, b), "approach")
-      end
-    end
-  end
-  return false
+function attempt_approach(x, y)
+  local point = first(where(points(1), function(point) return is_closer_traversable(point.x, point.y, x, y) end))
+  return point and attempt(to_key(point.x, point.y), "attempt_approach")
+end
+
+function is_closer_traversable(x0, y0, x1, y1)
+  return is_traversable(x0, y0) and distance(x0, y0, x1, y1) < distance(x1, y1)
 end
 
 function is_traversable(x, y)
@@ -896,7 +867,7 @@ function avoid_dangerous_clouds()
     if not target then
       return attempt_mini_explore()
     end
-    return approach(closest_adjacent_traversable(target:pos()))
+    return attempt_approach(closest_adjacent_traversable(target:pos()))
   end
   return true
 end
@@ -926,34 +897,42 @@ end
 -- todo
 
 ---------------------------------------------------------------------------
+-- fast travel                                                           --
+---------------------------------------------------------------------------
+
+function attempt_unstuck()
+  return attempt_mini_escape() or attempt_mini_explore() or attempt_mini_dive()
+end
+
+function attempt_mini_escape()
+  if view.feature_at(0, 0) == "exit_dungeon" and not you.have_orb() then return false end
+  if is_up_stairs(0, 0) then return attempt("<", "attempt_mini_escape") end
+  return attempt("X<." .. ESCAPE_KEY, "attempt_mini_escape")
+end
+
+function attempt_mini_explore()
+  return attempt("Xo." .. ESCAPE_KEY, "attempt_mini_explore")
+end
+
+function attempt_mini_dive()
+  if is_down_stairs(0, 0) then return attempt(">", "attempt_mini_dive") end
+  return attempt("X>." .. ESCAPE_KEY, "attempt_mini_dive")
+end
+
+---------------------------------------------------------------------------
 -- escaping                                                              --
 ---------------------------------------------------------------------------
 
 function is_escaping()
-  return c_persist.flags["escaping"] or false
+  return c_persist.flags.escaping or false
 end
 
 function start_escaping()
-  c_persist.flags["escaping"] = true
+  c_persist.flags.escaping = true
 end
 
 function stop_escaping()
-  c_persist.flags["escaping"] = false
-end
-
-function attempt_mini_escape()
-
-  -- does not avoid bumping into monsters
-
-  if view.feature_at(0, 0) == "exit_dungeon" and not you.have_orb() then
-    return false
-  end
-
-  if is_up_stairs(0, 0) then
-    return attempt("<", "attempt_mini_escape")
-  end
-
-  return attempt("X<." .. ESCAPE_KEY, "attempt_mini_escape")
+  c_persist.flags.escaping = false
 end
 
 function escape()
@@ -973,7 +952,7 @@ function escape()
 end
 
 function exclude_monsters(radius)
-  util.foreach(monsters(radius), function(monster) travel.set_exclude(monster:x_pos(), monster:y_pos(), 0) end)
+  util.foreach(monsters(), function(monster) travel.set_exclude(monster:x_pos(), monster:y_pos(), radius or 0) end)
 end
 
 function clear_exclusions()
@@ -1853,20 +1832,26 @@ function compare_armour(left, right)
   if left.artefact or right.artefact then
     return 0
   end
+
   if left.is_useless or right.is_useless then
     return 0
   end
+
   if not left.class(true) == "armour" or
       not right.class(true) == "armour" then
     return 0
   end
+
   if left.subtype() ~= right.subtype() then
     return 0
   end
+
   if not left.fully_identified or not right.fully_identified then
     return 0
   end
+
   result = 0
+
   if left.subtype() == "body" then
     result = compare(body_level(left), body_level(right))
   elseif left.subtype() == "helmet" then
@@ -1878,9 +1863,11 @@ function compare_armour(left, right)
   elseif left.subtype() == "boots" then
     result = compare(gloves_level(left), gloves_level(right))
   end
-  if not (result == 0) then
+
+  if result ~= 0 then
     return result
   end
+
   return compare(left.ac + (left.plus or 0), right.ac + (right.plus or 0))
 end
 
@@ -1909,7 +1896,11 @@ end
 ---------------------------------------------------------------------------
 
 function print(object, channel)
-  crawl.mpr(encode(object), channel)
+  if type(object) == "table" then
+    crawl.mpr(encode(object), channel)
+  else
+    crawl.mpr(object, channel)
+  end
 end
 
 function encode(object)
@@ -1931,8 +1922,8 @@ end
 function sanitize(string)
   string = string:gsub("<%w*>", "")
   string = string:gsub("</%w*>", "")
-  string = string:gsub("[^%w]", "_")
-  return tostring(string:lower())
+  string = string:gsub("[^%w]", "")
+  return string:lower()
 end
 
 function monster_to_table(monster)
@@ -2072,14 +2063,6 @@ function c_message(text, channel)
     return
   end
 
-  if text:find("would you want") or text:find("too confused") then
-   -- too confused happens when a monster goes invisible while confused and you don't know
-   -- the location. need to keep track of pre-invisible monster locations better to prevent this
-
-    stop_running()
-    return
-  end
-
   if text:find("suddenly seem different") then
     cleanup()
     return
@@ -2101,10 +2084,10 @@ function c_message(text, channel)
   end
 
   if text:find("explore") or text:find("exploring") then
-    if you.depth() == cleared_depth() + 1 then
-      c_persist.cleared_depth[you.branch()] = you.depth()
-    end
 
+    -- finished exploring
+
+    if you.depth() == cleared_depth() + 1 then c_persist.cleared_depth[you.branch()] = you.depth() end
     return
   end
 
@@ -2112,11 +2095,12 @@ function c_message(text, channel)
 
     -- todo: add logic to handle unreachable electric eels
 
-    if not attempt_mini_explore() and not attempt_goal() then
+    if not attempt_mini_explore() then
 
-      -- todo: handle being stuck
+      -- finished exploring
 
-      stop_running()
+      if you.depth() == cleared_depth() + 1 then c_persist.cleared_depth[you.branch()] = you.depth() end
+      start_escaping()
     end
 
     return
@@ -2229,7 +2213,7 @@ function debug_escape()
 end
 
 function debug()
-  exclude_monsters()
+  print("<cyan>test</cyan>")
 end
 
 function ch_start_running(kind)

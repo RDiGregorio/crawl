@@ -805,7 +805,10 @@ function invisible_threat(radius)
   if radius and not x and not y then return 0 end
   local monster = c_persist.monsters[c_persist.invisible_monster]
   if monster then return monster.threat end
-  return HARD
+
+  -- should be HARD, only NIGHTMARE for debugging
+
+  return NIGHTMARE
 end
 
 function is_visible_monster_present(radius)
@@ -973,15 +976,8 @@ function escape()
   return attempt("X<." .. ESCAPE_KEY, "escape")
 end
 
-function exclude_monsters()
-  for a = -8, 8 do
-    for b = -8, 8 do
-      local c = monster.get_monster_at(a, b)
-      if c then
-        travel.set_exclude(c:x_pos(), c:y_pos(), 0)
-      end
-    end
-  end
+function exclude_monsters(radius)
+  util.foreach(monsters(radius), function(monster) travel.set_exclude(monster:x_pos(), monster:y_pos(), 0) end)
 end
 
 function clear_exclusions()
@@ -1943,11 +1939,6 @@ function sanitize(string)
   return tostring(string:lower())
 end
 
-function point_to_string(point)
-  if point == nil then return tostring(nil) end
-  return "(" .. point.x .. ", " .. point.y .. ")"
-end
-
 function monster_to_table(monster)
   return {name = monster:name(), x = monster:x_pos(), y = monster:y_pos(), threat = calculate_threat(monster)}
 end
@@ -2242,7 +2233,7 @@ function debug_escape()
 end
 
 function debug()
-  print(threat(1))
+  exclude_monsters()
 end
 
 function ch_start_running(kind)

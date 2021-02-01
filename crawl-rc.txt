@@ -6,7 +6,6 @@
 # script wand usage on eels, some blinkers
 # script special tactics for certain monsters
 # need to add checks for safe and automatically trigger it
-# NEED TO SANITIZE MONSTER NAMES TO USE AS TABLE KEYS!!
 # prevent running in some cases (berserk, slow, poisoned?)
 # prevent running if some fast mobs are adjacent?
 
@@ -62,6 +61,7 @@ channel.monster_damage = mute
 message_colour += mute:menu to convert
 message_colour += mute:Move the cursor to view the level map
 message_colour += mute:Returning to the game
+message_colour += mute:Waypoint 0
 
 use_animations -= beam, pickup, branch_entry
 #use_animations -= range, hp, monster_in_sight, monster, player
@@ -95,8 +95,6 @@ local ENTER_KEY = string.char(13)
 
 local running = false
 
-local invisible_waypoint_exists = false
-local invisible_monster_name = nil
 local attempt_turns = {}
 
 function attempt(keys, index)
@@ -145,28 +143,27 @@ function housekeeping()
     c_persist.cleared_depth = {}
     c_persist.found = {}
     c_persist.flags = {}
+
     c_persist.monsters = {}
+    c_persist.invisible_monster = nil
+    c_persist.invisible_waypoint_exists = false
+
     c_persist.dancing = nil
     c_persist.where = you.where()
     train()
   end
 
+
   -- todo: this does not work in pan
 
-  if c_persist.where ~= you.where() then
-    invisible_monster_name = nil
-    invisible_waypoint_exists = false
-    stop_escaping()
-  end
+  if c_persist.where ~= you.where() then cleanup() end
+
 
   c_persist.where = you.where()
+  persist_monsters()
 
   crawl.redraw_screen()
   print_information()
-
-  if is_invisible_monster_present() then
-    update_invisible_waypoint()
-  end
 
   return true
 end
@@ -191,6 +188,13 @@ function train()
     you.train_skill("Armour", 1)
     you.train_skill("Fighting", 1)
     you.train_skill("Dodging", 1)
+end
+
+function cleanup()
+  c_persist.monsters = {}
+  c_persist.invisible_monster = nil
+  c_persist.invisible_waypoint_exists = false
+  stop_escaping()
 end
 
 function run(stepping)
@@ -444,35 +448,30 @@ function tab(is_reckless)
   end
 
   if is_invisible_monster_present() then
-    if find_invisible(1) then
-      crawl.sendkeys("*" .. to_key(find_invisible(1)))
+
+    -- attacks adjacent invisible monsters with known locations
+
+    if invisible_monster_location(1) then
+      crawl.sendkeys("*" .. to_key(invisible_monster_location(1)))
       return
     end
 
     if not is_visible_monster_present() then
-      if invisible_waypoint_exists then
-        local x, y = travel.waypoint_delta(0)
 
-        if x == 0 and y == 0 then
-          invisible_waypoint_exists = false
+      -- if there are no visible monsters, attacks the last known location of an invisible monster
 
-          if not attempt_mini_escape() then
-            stop_running()
-          end
-          return
-        end
+      local x, y = invisible_monster_location(nil, true)
 
-        if is_traversable(clamp(-x, -1, 1), clamp(-y, -1, 1)) then
-          crawl.sendkeys(to_key(clamp(-x, -1, 1), clamp(-y, -1, 1)))
-          return
-        else
-          invisible_waypoint_exists = false
-        end
+      if x and y and is_traversable(clamp(x, -1, 1), clamp(y, -1, 1)) then
+        crawl.sendkeys(to_key(clamp(x, -1, 1), clamp(y, -1, 1)))
+        return
       end
 
-      if not attempt_mini_escape() then
-        stop_running()
-      end
+      -- if no invisible monster has a last known location, escapes
+
+	  if not attempt_mini_escape() then
+	    stop_running()
+	  end
 
       return
     end
@@ -604,6 +603,28 @@ function find_monster(pattern, radius)
   return first(where(monsters(radius), function(monster) return is_monster(monster, pattern) end))
 end
 
+function invisible_monster_location(radius, guess)
+  local point = first(invisible_monsters(radius))
+
+  if point then
+    c_persist.invisible_waypoint_exists = true
+    travel.set_waypoint(0, point.x, point.y)
+	return point.x, point.y
+  end
+
+  if guess and c_persist.invisible_waypoint_exists then
+    local x, y = travel.waypoint_delta(0)
+
+    if x == 0 and y == 0 then
+      c_persist.invisible_waypoint_exists = false
+	  return nil
+    end
+
+    if radius and distance(x, y) > radius then return nil end
+    return -x, -y
+  end
+end
+
 function count_monsters(radius, f)
   if f then return length(where(monsters(radius), f)) end
   return length(monsters(radius))
@@ -672,30 +693,9 @@ function has_distortion_weapon(monster)
 end
 
 function threat(radius)
-  -- local result = sum(map(monsters(radius), calculate_threat))
-
-  radius = radius or 8
-  local result = 0
-  local invisible_threat = 0
-  for a = -radius, radius do
-    for b = -radius, radius do
-      local x, y = guess_invisible()
-      if x == a and y == b then
-        invisible_threat = calculate_invisible_threat()
-      else
-        local c = monster.get_monster_at(a, b)
-        if c and not c.is_safe(c) then
-          result = result + calculate_threat(c)
-        end
-      end
-    end
-  end
-  if is_invisible_monster_present() and
-      invisible_threat == 0 and
-      radius == 8 then
-    invisible_threat = calculate_invisible_threat()
-  end
-  return result + invisible_threat
+  local result = sum(map(monsters(radius), calculate_threat))
+  if not radius then return result + invisible_threat() end
+  return result + invisible_threat(radius)
 end
 
 function adjusted_threat(radius)
@@ -799,12 +799,13 @@ function calculate_threat(target)
   return 2 ^ result
 end
 
-function calculate_invisible_threat()
-  -- todo: use invisible_monster_name to calcualte threat
-  if is_invisible_monster_present() then
-    return HARD
-  end
-  return 0
+function invisible_threat(radius)
+  if not is_invisible_monster_present() then return 0 end
+  local x, y = invisible_monster_location(radius, true)
+  if radius and not x and not y then return 0 end
+  local monster = c_persist.monsters[c_persist.invisible_monster]
+  if monster then return monster.threat end
+  return HARD
 end
 
 function is_visible_monster_present(radius)
@@ -884,31 +885,8 @@ function invisible_monsters(radius)
   return where(points(radius), function(point) return view.invisible_monster(point.x, point.y) end)
 end
 
-function find_invisible(radius)
-  local point = first(invisible_monsters(radius))
-  return point.x, point.y
-end
-
-function guess_invisible()
-  if invisible_waypoint_exists then
-    local x, y = travel.waypoint_delta(0)
-
-    if x and y then
-      return -x, -y
-    end
-  end
-end
-
 function is_invisible_monster_present()
-  return not options.autopick_on or length(invisible_monsters()) > 0
-end
-
-function update_invisible_waypoint()
-  local x, y = find_invisible()
-  if x and y then
-    travel.set_waypoint(0, x, y)
-    invisible_waypoint_exists = true
-  end
+  return not options.autopick_on or not is_empty(invisible_monsters())
 end
 
 function avoid_dangerous_clouds()
@@ -965,14 +943,18 @@ function stop_escaping()
 end
 
 function attempt_mini_escape()
+
   -- does not avoid bumping into monsters
-  if view.feature_at(0, 0) == "exit_dungeon" then
+
+  if view.feature_at(0, 0) == "exit_dungeon" and not you.have_orb() then
     return false
   end
+
   if is_up_stairs(0, 0) then
-    return attempt("<", "escape")
+    return attempt("<", "attempt_mini_escape")
   end
-  return attempt("X<." .. ESCAPE_KEY, "escape")
+
+  return attempt("X<." .. ESCAPE_KEY, "attempt_mini_escape")
 end
 
 function escape()
@@ -1955,7 +1937,10 @@ function encode(object)
 end
 
 function sanitize(string)
-  return tostring(string:lower():gsub("[^%w]", "_"))
+  string = string:gsub("<%w*>", "")
+  string = string:gsub("</%w*>", "")
+  string = string:gsub("[^%w]", "_")
+  return tostring(string:lower())
 end
 
 function point_to_string(point)
@@ -1963,13 +1948,8 @@ function point_to_string(point)
   return "(" .. point.x .. ", " .. point.y .. ")"
 end
 
-function monster_to_string(monster)
-  if monster == nil then return tostring(nil) end
-  return monster:name()
-end
-
 function monster_to_table(monster)
-  return {name = sanitize(monster:name()), x = monster:x_pos(), y = monster:y_pos(), threat = calculate_threat(monster)}
+  return {name = monster:name(), x = monster:x_pos(), y = monster:y_pos(), threat = calculate_threat(monster)}
 end
 
 function to_key(x, y)
@@ -2114,9 +2094,7 @@ function c_message(text, channel)
   end
 
   if text:find("suddenly seem different") then
-    invisible_monster_name = nil
-    invisible_waypoint_exists = false
-    stop_escaping()
+    cleanup()
     return
   end
 
@@ -2212,25 +2190,34 @@ function c_message(text, channel)
 
   if text:find("the .* flickers and vanishes") then
     local _, _, match = text:find("the (.*) flickers and vanishes")
-    invisible_monster_name = match
+    c_persist.invisible_monster = sanitize(match)
+    local monster = c_persist.monsters[c_persist.invisible_monster]
+    travel.set_waypoint(0, monster.x, monster.y)
+	c_persist.invisible_waypoint_exists = true
     return
   end
 
   if text:find(".* flickers and vanishes") then
     local _, _, match = text:find("(.*) flickers and vanishes")
-    invisible_monster_name = match
+    c_persist.invisible_monster = sanitize(match)
+    local monster = c_persist.monsters[c_persist.invisible_monster]
+    travel.set_waypoint(0, monster.x, monster.y)
+	c_persist.invisible_waypoint_exists = true
     return
   end
 
   if text:find("the .* flickers out of sight") then
     local _, _, match = text:find("the (.*) flickers out of sight")
-    invisible_monster_name = match
+    c_persist.invisible_monster = sanitize(match)
+    local monster = c_persist.monsters[c_persist.invisible_monster]
+    travel.set_waypoint(0, monster.x, monster.y)
+	c_persist.invisible_waypoint_exists = true
     return
   end
 
   if text:find("Reactivating autopickup") then
-    invisible_monster_name = nil
-    invisible_waypoint_exists = false
+    c_persist.invisible_monster = nil
+    c_persist.invisible_waypoint_exists = false
     return
   end
 end
@@ -2255,7 +2242,7 @@ function debug_escape()
 end
 
 function debug()
-  print(is_safe())
+  print(threat(1))
 end
 
 function ch_start_running(kind)
@@ -2265,7 +2252,7 @@ function ch_start_running(kind)
 end
 
 function persist_monsters(radius)
-  util.foreach(map(monsters(radius), monster_to_table), function(t) c_persist.monsters[t.name] = t end)
+  util.foreach(map(monsters(radius), monster_to_table), function(table) c_persist.monsters[sanitize(table.name)] = table end)
 end
 
 }

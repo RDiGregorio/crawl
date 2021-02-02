@@ -118,61 +118,22 @@ function stop_running()
   end
 end
 
-function ready()
+---------------------------------------------------------------------------
+-- init                                                                  --
+---------------------------------------------------------------------------
+
+function init()
   crawl.enable_more(false)
   crawl.more_autoclear(true)
-
-  if c_persist.flags and c_persist.flags["exclude"] then
-    c_persist.flags["exclude"] = false
-    clear_exclusions()
-  end
-
-  if housekeeping() then
-    run()
-  end
-end
-
-function housekeeping()
-  if you.turns() == 0 then
-    c_persist.cleared_depth = {}
-    c_persist.found = {}
-    c_persist.flags = {}
-
-    c_persist.monsters = {}
-    c_persist.invisible_monster = nil
-    c_persist.invisible_waypoint_exists = false
-
-    c_persist.dancing = nil
-    c_persist.where = you.where()
-    train()
-  end
-
-  -- todo: this does not work in pan
-
-  if c_persist.where ~= you.where() then cleanup() end
-
+  c_persist.cleared_depth = {}
+  c_persist.found = {}
+  c_persist.flags = {}
+  c_persist.monsters = {}
+  c_persist.invisible_monster = nil
+  c_persist.invisible_waypoint_exists = false
+  c_persist.dancing = nil
   c_persist.where = you.where()
-  persist_monsters()
-
-  crawl.redraw_screen()
-  print_information()
-
-  return true
-end
-
-function print_information()
-  local threat_level = adjusted_threat()
-  local channel = nil
-  local message = "Danger: "
-
-  message = message .. math.floor(danger_percent()) .. "% (" .. danger_text(threat_level) .. ")"
-
-  if threat_level >= IMPOSSIBLE then
-    channel = 6
-  end
-
-  print(message, channel)
-  print_extra_hard_monsters()
+  train()
 end
 
 function train()
@@ -182,7 +143,38 @@ function train()
     you.train_skill("Dodging", 1)
 end
 
-function cleanup()
+---------------------------------------------------------------------------
+-- ready                                                                 --
+---------------------------------------------------------------------------
+
+function ready()
+  if you.turns() == 0 then init() end
+
+  if c_persist.flags.exclude then
+    c_persist.flags.exclude = false
+    clear_exclusions()
+  end
+
+  -- todo: this does not work in pan
+
+  if c_persist.where ~= you.where() then reset() end
+  c_persist.where = you.where()
+  persist_monsters()
+  crawl.redraw_screen()
+  print_information()
+  run()
+end
+
+function print_information()
+  local threat_level = adjusted_threat()
+  local channel = nil
+  local message = "Danger: " .. math.floor(danger_percent()) .. "% (" .. danger_text(threat_level) .. ")"
+  if threat_level >= IMPOSSIBLE then channel = 6 end
+  print(message, channel)
+  print_extra_hard_monsters()
+end
+
+function reset()
   c_persist.monsters = {}
   c_persist.invisible_monster = nil
   c_persist.invisible_waypoint_exists = false
@@ -251,7 +243,7 @@ function is_caster()
   return not is_empty(you.spells())
 end
 
-function must_rest()
+function is_tired()
   return you.status("berserk cooldown") or
       hp_percent() < 100 or
       mp_percent() < 100 or
@@ -276,7 +268,7 @@ function explore()
     return
   end
 
-  if you.berserk() or must_rest() then
+  if you.berserk() or is_tired() then
 
     -- todo: handle being on fire or in clouds
     -- can't fast travel in clouds
@@ -496,7 +488,7 @@ function swing_at_nothing()
 end
 
 function wait()
-  if must_rest() or
+  if is_tired() or
       you.berserk() or
       crawl.yesno("Are you sure you want to wait?", true, "n") then
     crawl.sendkeys("5")
@@ -560,7 +552,7 @@ function can_walk_away()
 end
 
 function can_stair_dance()
-  if you.absdepth() == 1 or not can_see_up_stairs() then return false end
+  if you.absdepth() == 1 and not you.have_orb() or not can_see_up_stairs() then return false end
 
   -- prevents stair dancing if only undead monsters are adjacent
 
@@ -1637,20 +1629,6 @@ function upgrade_equipment()
   return false
 end
 
-function remove_dangerous_rings()
-  for item in inventory() do
-    if item.equipped and
-        not item.cursed and
-        is_ring(item) and
-        is_dangerous_item(item) then
-      if item.remove() then
-        return true
-      end
-    end
-  end
-  return false
-end
-
 ---------------------------------------------------------------------------
 -- weapon and armour utility                                             -- 
 ---------------------------------------------------------------------------
@@ -1964,6 +1942,16 @@ function ring_level(ring)
   return 0
 end
 
+function remove_dangerous_rings()
+  for item in inventory() do
+    if item.equipped and not item.cursed and is_ring(item) and is_dangerous_item(item) then
+      if item.remove() then return true end
+    end
+  end
+
+  return false
+end
+
 ---------------------------------------------------------------------------
 -- functional utility                                                    --
 ---------------------------------------------------------------------------
@@ -2137,7 +2125,7 @@ function c_message(text, channel)
   end
 
   if text:find("suddenly seem different") then
-    cleanup()
+    reset()
     return
   end
 

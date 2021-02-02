@@ -247,6 +247,10 @@ end
 -- exploration                                                           --
 ---------------------------------------------------------------------------
 
+function is_caster()
+  return not is_empty(you.spells())
+end
+
 function must_rest()
   return you.status("berserk cooldown") or
       hp_percent() < 100 or
@@ -1063,23 +1067,6 @@ function is_junk_armour(item)
   return false
 end
 
-function is_junk_amulet(item)
-  if is_amulet(item) then
-    if item.subtype() == "amulet of inaccuracy" then
-      return true
-    end
-    if item.equipped and is_faith_bound() then
-      return false
-    end
-    for other in inventory() do
-      if compare_amulets(item, other) < 0 then
-        return true
-      end
-    end
-  end
-  return false
-end
-
 function is_junk_ring(item)
   if is_ring(item) then
     if item.subtype() == "ring of teleportation" or
@@ -1093,15 +1080,9 @@ function is_junk_ring(item)
   return false
 end
 
-function is_dangerous(item)
-  if is_ring(item) then
-    return item.subtype() == "ring of fire" or
-        item.subtype() == "ring of ice"
-  end
-  if is_scales(item) then
-    return item:name():find("fire dragon scales") or
-        item:name():find("ice dragon scales")
-  end
+function is_dangerous_item(item)
+  if is_ring(item) then return item.subtype() == "ring of fire" or item.subtype() == "ring of ice" end
+  if is_scales(item) then return item:name():find("fire dragon scales") or item:name():find("ice dragon scales") end
   return false
 end
 
@@ -1385,117 +1366,8 @@ function uses_weapon_skill(item)
   return item.class(true) == "weapon" and item.weap_skill == "Axes"
 end
 
-function is_amulet(item)
-  if item.class(true) == "jewellery" then
-    return item.name():find("amulet") or item.name():find("necklace")
-  end
-  return false
-end
-
-function is_ring(item)
-  if item.class(true) == "jewellery" then
-    return item.name():find("ring")
-  end
-  return false
-end
-
 function is_scales(item)
   return item.name():find("scales")
-end
-
-function compare_amulets(left, right)
-  -- todo: handle artefacts
-  if left.artefact or right.artefact then
-    return 0
-  end
-  if not is_amulet(left) or not is_amulet(right) then
-    return 0
-  end
-  if not left.fully_identified or not right.fully_identified then
-    return 0
-  end
-  return compare(amulet_level(left), amulet_level(right))
-end
-
-function amulet_level(amulet)
-  if amulet.subtype() == "amulet of regeneration" then
-    return 6
-  end
-  if amulet.subtype() == "amulet of guardian spirit" then
-    return 5
-  end
-  if amulet.subtype() == "amulet of faith" then
-    return 4
-  end
-  if amulet.subtype() == "amulet of the acrobat" then
-    return 3
-  end
-  if amulet.subtype() == "amulet of reflection" then
-    return 2
-  end
-  if amulet.subtype() == "amulet of magic regeneration" then
-    return 1
-  end
-  return 0
-end
-
-function compare_rings(left, right)
-  -- todo: handle artefacts
-  if left.artefact or right.artefact then
-    return 0
-  end
-  if not is_ring(left) or not is_ring(right) then
-    return 0
-  end
-  if not left.fully_identified or not right.fully_identified then
-    return 0
-  end
-  return compare(ring_level(left), ring_level(right))
-end
-
-function ring_level(ring)
-  -- todo: add better ring logic
-  if ring.subtype() == "ring of see invisible" then
-    return 0
-  end
-  if ring.subtype() == "ring of poison resistance" then
-    return 0
-  end
-  if ring.subtype() == "ring of protection from fire" then
-    return 0
-  end
-  if ring.subtype() == "ring of protection from cold" then
-    return 0
-  end
-  if ring.subtype() == "ring of resist corrosion" then
-    return 0
-  end
-  if ring.subtype() == "ring of positive energy" then
-    return 0
-  end
-  if ring.subtype() == "ring of slaying" then
-    return 7
-  end
-  if ring.subtype() == "ring of protection" then
-    return 6
-  end
-  if ring.subtype() == "ring of evasion" then
-    return 5
-  end
-  if ring.subtype() == "ring of willpower" then
-    return 4
-  end
-  if ring.subtype() == "ring of stealth" then
-    return 3
-  end
-  if ring.subtype() == "ring of strength" then
-    return 2
-  end
-  if ring.subtype() == "ring of dexterity" then
-    return 1
-  end
-  -- flight, magical power, wizardry, intelligence, fire, ice
-  return 0
 end
 
 function wand_level(wand)
@@ -1529,55 +1401,53 @@ function wand_level(wand)
   return 0
 end
 
-function helmet_level(item)
-  if item:ego() == "see invisible" then
-    return 2
-  end
-  if item:ego() == "willpower" then
-    return 1
-  end
-  -- don't care about intelligence
-  if item:ego() == "intelligence" then
-    return 0
-  end
-  -- don't care about other brands
-  return 0
-end
-
 function cloak_level(item)
   if item:ego() == "resistance" then
     return 5
   end
+
   if item:ego() == "poison resistance" then
     return 4
   end
+
   if item:ego() == "preservation" then
     return 4
   end
+
   if item:ego() == "fire resistance" then
     return 4
   end
+
   if item:ego() == "cold resistance" then
     return 4
   end
+
   if item:ego() == "repulsion" then
     return 3
   end
+
   if item:ego() == "willpower" then
     return 2
   end
+
   if item:ego() == "stealth" then
     return 1
   end
+
   -- don't care about invisibility
+
   if item:ego() == "invisibility" then
     return 0
   end
+
   -- harm is junk
+
   if item:ego() == "harm" then
     return -1
   end
+
   -- don't care about other brands
+
   return 0
 end
 
@@ -1585,13 +1455,17 @@ function boots_level(item)
   if item:ego() == "running" then
     return 3
   end
+
   if item:ego() == "flying" then
     return 2
   end
+
   if item:ego() == "stealth" then
     return 1
   end
+
   -- don't care about other brands
+
   return 0
 end
 
@@ -1599,14 +1473,19 @@ function gloves_level(item)
   if item:ego() == "strength" then
     return 2
   end
+
   if item:ego() == "dexterity" then
     return 1
   end
+
   -- don't care about archery
+
   if item:ego() == "archery" then
     return 0
   end
+
   -- don't care about other brands
+
   return 0
 end
 
@@ -1614,63 +1493,59 @@ function body_level(item)
   if item:name():find("gold dragon scales") then
     return 1
   end
+
   if item:name():find("storm dragon scales") then
     return 1
   end
+
   if item:name():find("shadow dragon scales") then
     return 1
   end
+
   if item:name():find("pearl dragon scales") then
     return 1
   end
+
   -- fire and ice scales are dangerous
+
   if item:name():find("fire dragon scales") then
     return -1
   end
+
   if item:name():find("ice dragon scales") then
     return -1
   end
+
   -- don't care about other types
+
   return 0
 end
 
-function is_faith_equipped()
-  local amulet = items.equipped_at("Amulet")
-  return amulet and amulet.subtype() == "amulet of faith"
-end
-
-function is_faith_bound()
-  return is_faith_equipped() and you.piety_rank() < 6
-end
-
 function equip_ring(item, letter)
-  if is_ring(item) and not item.equipped then
-    if is_ring_missing() then
-      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
-      return true
-    end
-    local left = items.equipped_at("Left Ring")
-    local right = items.equipped_at("Right Ring")
-    if left.cursed and right.cursed then
-      return false
-    end
-    if left.cursed or right.cursed then
-      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
-      return true
-    end
-    if left.subtype() == right.subtype() and left.plus == right.plus then
-      crawl.sendkeys("P" .. items.index_to_letter(item.slot))
-      return true
-    end
-    if compare_rings(left, right) > 0 then
-      letter = letter or ">"
-    else
-      letter = letter or "<"
-    end
-    crawl.sendkeys("P" .. items.index_to_letter(item.slot) .. letter)
+  if item.equipped or not is_ring(item) then return false end
+
+  if is_ring_missing() then
+    crawl.sendkeys("P" .. items.index_to_letter(item.slot))
     return true
   end
-  return false
+
+  local left = items.equipped_at("Left Ring")
+  local right = items.equipped_at("Right Ring")
+  if left.cursed and right.cursed then return false end
+
+  if left.cursed or right.cursed or left.subtype() == right.subtype() and left.plus == right.plus then
+    crawl.sendkeys("P" .. items.index_to_letter(item.slot))
+    return true
+  end
+
+  if compare_rings(left, right) > 0 then
+    letter = letter or ">"
+  else
+    letter = letter or "<"
+  end
+
+  crawl.sendkeys("P" .. items.index_to_letter(item.slot) .. letter)
+  return true
 end
 
 function is_ring_missing()
@@ -1699,7 +1574,7 @@ function upgrade_equipment()
   for item in inventory() do
     if not item.equipped and
         not item.artefact and
-        not is_dangerous(item) and
+        not is_dangerous_item(item) and
         not is_slot_missing(item) and
         not is_junk(item) then
       if item.class(true) == "weapon" then
@@ -1767,7 +1642,7 @@ function remove_dangerous_rings()
     if item.equipped and
         not item.cursed and
         is_ring(item) and
-        is_dangerous(item) then
+        is_dangerous_item(item) then
       if item.remove() then
         return true
       end
@@ -1920,6 +1795,173 @@ function best_ac(subtype)
     end
   end
   return result
+end
+
+---------------------------------------------------------------------------
+-- helmets                                                               --
+---------------------------------------------------------------------------
+
+function helmet_level(item)
+  if item:ego() == "see invisible" then
+    if species_has_mutation("see invisible") then return 0 end
+    return 3
+  end
+
+  if item:ego() == "intelligence" then
+    if not is_caster() then return 0 end
+    return 2
+  end
+
+  if item:ego() == "willpower" then return 1 end
+
+  -- don't care about other brands
+
+  return 0
+end
+
+---------------------------------------------------------------------------
+-- amulets                                                               --
+---------------------------------------------------------------------------
+
+function is_amulet(item)
+  if item.class(true) ~= "jewellery" then return false end
+  return item.name():find("amulet") or item.name():find("necklace")
+end
+
+function is_faith_equipped()
+  local amulet = items.equipped_at("Amulet")
+  return amulet and amulet.subtype() == "amulet of faith"
+end
+
+function is_faith_bound()
+  return is_faith_equipped() and you.piety_rank() < 6
+end
+
+function compare_amulets(left, right)
+
+  -- todo: handle artefacts
+
+  if left.artefact or right.artefact then
+    return 0
+  end
+
+  if not is_amulet(left) or not is_amulet(right) then
+    return 0
+  end
+
+  if not left.fully_identified or not right.fully_identified then
+    return 0
+  end
+
+  return compare(amulet_level(left), amulet_level(right))
+end
+
+function amulet_level(amulet)
+  if amulet.subtype() == "amulet of regeneration" then return 6 end
+
+  if amulet.subtype() == "amulet of guardian spirit" then
+    if is_caster() then return 0 end
+    return 5
+  end
+
+  if amulet.subtype() == "amulet of faith" then return 4 end
+  if amulet.subtype() == "amulet of the acrobat" then return 3 end
+  if amulet.subtype() == "amulet of reflection" then return 2 end
+  if amulet.subtype() == "amulet of magic regeneration" then return 1 end
+  return 0
+end
+
+function is_junk_amulet(item)
+  if is_amulet(item) then
+    if item.subtype() == "amulet of inaccuracy" then return true end
+    if item.equipped and is_faith_bound() then return false end
+
+    for other in inventory() do
+      if compare_amulets(item, other) < 0 then return true end
+    end
+  end
+
+  return false
+end
+
+---------------------------------------------------------------------------
+-- rings                                                                 --
+---------------------------------------------------------------------------
+
+function is_ring(item)
+  if item.class(true) ~= "jewellery" then return false end
+  return item.name():find("ring")
+end
+
+function compare_rings(left, right)
+
+  -- todo: handle artefacts
+
+  if left.artefact or right.artefact then return 0 end
+  if not is_ring(left) or not is_ring(right) then return 0 end
+  if not left.fully_identified or not right.fully_identified then return 0 end
+  return compare(ring_level(left), ring_level(right))
+end
+
+function ring_level(ring)
+
+  -- todo: add better ring logic
+
+  if ring.subtype() == "ring of see invisible" then
+    return 0
+  end
+
+  if ring.subtype() == "ring of poison resistance" then
+    return 0
+  end
+
+  if ring.subtype() == "ring of protection from fire" then
+    return 0
+  end
+
+  if ring.subtype() == "ring of protection from cold" then
+    return 0
+  end
+
+  if ring.subtype() == "ring of resist corrosion" then
+    return 0
+  end
+
+  if ring.subtype() == "ring of positive energy" then
+    return 0
+  end
+
+  if ring.subtype() == "ring of slaying" then
+    return 7
+  end
+
+  if ring.subtype() == "ring of protection" then
+    return 6
+  end
+
+  if ring.subtype() == "ring of evasion" then
+    return 5
+  end
+
+  if ring.subtype() == "ring of willpower" then
+    return 4
+  end
+
+  if ring.subtype() == "ring of stealth" then
+    return 3
+  end
+
+  if ring.subtype() == "ring of strength" then
+    return 2
+  end
+
+  if ring.subtype() == "ring of dexterity" then
+    return 1
+  end
+
+  -- flight, magical power, wizardry, intelligence, fire, ice
+
+  return 0
 end
 
 ---------------------------------------------------------------------------
@@ -2249,10 +2291,13 @@ function debug_escape()
   step()
 end
 
+function species_has_mutation(mutation)
+  return you.get_base_mutation_level(mutation, true, false, false) > 0
+end
+
 function debug()
-  print(is_dangerous_cloud(0, 0))
-  print(false and nil)
-  print(nil and false)
+  print(you.mutation_overview())
+  print(species_has_mutation("see invisible"))
 end
 
 function persist_monsters(radius)

@@ -30,7 +30,7 @@ bindkey = [p] CMD_NO_CMD_DEFAULT
 view_delay = 0
 travel_delay = -1
 rest_delay = -1
-use_animations = 0
+use_animations = hp
 
 travel_key_stop = false
 show_travel_trail = false
@@ -48,7 +48,7 @@ explore_stop += greedy_pickup
 #autopickup_exceptions += brilliance, holy word, silence
 #autopickup_exceptions += polymorph, random effects
 
-autopickup_exceptions += <phantom mirror, <throwing net
+autopickup_exceptions += <phantom mirror, <throwing net, <dart
 
 auto_exclude = oklob plant, Roxanne, orange crystal statue, diamond obelisk
 
@@ -261,14 +261,27 @@ function must_rest()
 end
 
 function explore()
+  -- this might never get run, need to debug
+
+  if you.on_fire() then
+    if attempt("s") then return end
+
+    -- we are stuck
+
+    stop_running()
+    return
+  end
+
   if you.berserk() or must_rest() then
-    if not attempt("5") and not attempt_unstuck() then
 
-      -- we are stuck
+    -- todo: handle being on fire or in clouds
+    -- can't fast travel in clouds
 
-      stop_running()
-    end
+    if attempt("5") then return end
 
+    -- we are stuck
+
+    stop_running()
     return
   end
 
@@ -278,21 +291,20 @@ function explore()
   if remove_dangerous_rings() then return end
   if drop_junk() then return end
 
-  if is_shafted() and not attempt_mini_escape() and not attempt("o") then
+  if is_shafted() then
+    if attempt_mini_escape() or attempt("o") then return end
 
     -- we are stuck
 
     stop_running()
-	return
+    return
   end
 
-  if not attempt("o") and not attempt_goal() then
+  if attempt("o") or attempt_goal() then return end
 
-    -- we are stuck
+  -- we are stuck
 
-    stop_running()
-	return
-  end
+  stop_running()
 end
 
 function is_up_stairs(x, y)
@@ -408,7 +420,11 @@ function tab(is_reckless)
     return
   end
 
-  if not avoid_dangerous_clouds() then
+  if is_dangerous_cloud(0, 0) then
+    if attempt_approach(closest_adjacent_traversable(target:pos())) then return end
+
+    -- we are stuck
+
     stop_running()
     return
   end
@@ -435,28 +451,44 @@ function tab(is_reckless)
 
       -- no invisible monster has a last known location
 
-	  if not attempt_unstuck() then
+      if you.confused() then 
+        if swing_at_nothing() then return end
 
         -- we are stuck
 
-	    stop_running()
-	  end
+        stop_running()
+        return
+      end
 
+      if attempt_unstuck() then return end
+
+      -- we are stuck
+
+      stop_running()
       return
     end
+
+    -- a visible monster is present, so we fall through
+
   end
 
   -- attacks while confused
 
-  if you.confused() and not hit_closest_monster() then
+  if you.confused() then
+    if hit_closest_monster() then return end
 
-      -- we are stuck
+    -- we are stuck
 
-	  stop_running()
+    stop_running()
     return
   end
 
   crawl.sendkeys(TAB_KEY)
+end
+
+function swing_at_nothing()
+  local point = first(where(adjacent(), function(point) return not is_sold(point.x, point.y) end))
+  return point and attempt("*" .. to_key(point.x, point.y), "swing_at_nothing")
 end
 
 function wait()
@@ -547,7 +579,7 @@ function can_stair_dance()
 
     if previous and previous.name == current.name then
       previous.count = previous.count + 1
-	  if previous.count >= 20 then return false end
+      if previous.count >= 20 then return false end
     else
       c_persist.dancing = current
     end
@@ -588,7 +620,7 @@ function invisible_monster_location(radius, guess)
   if point then
     c_persist.invisible_waypoint_exists = true
     travel.set_waypoint(0, point.x, point.y)
-	return point.x, point.y
+    return point.x, point.y
   end
 
   if guess and c_persist.invisible_waypoint_exists then
@@ -596,7 +628,7 @@ function invisible_monster_location(radius, guess)
 
     if x == 0 and y == 0 then
       c_persist.invisible_waypoint_exists = false
-	  return nil
+      return nil
     end
 
     if radius and distance(x, y) > radius then return nil end
@@ -680,6 +712,7 @@ end
 function adjusted_threat(radius)
   local multiplier = 1
   if you.slowed() then multiplier = multiplier + 1 end
+  if you.confused() then multiplier = multiplier + 1 end
   if you.poisoned() then multiplier = multiplier + 1 end
   if you.corrosion() > 0 then multiplier = multiplier + 1 end
   return threat(radius) * multiplier * 100 / hp_percent()
@@ -815,11 +848,11 @@ end
 function closest_monster(radius)
   local less_than = function(left, right)
     local left_distance = distance(left:pos())
-	local right_distance = distance(right:pos())
+    local right_distance = distance(right:pos())
 
     if left_distance == right_distance then
-	  return calculate_threat(left) < calculate_threat(right)
-	end
+      return calculate_threat(left) < calculate_threat(right)
+    end
 
     return left_distance < right_distance
   end
@@ -837,7 +870,7 @@ function hit_closest_monster()
 end
 
 function attempt_approach(x, y)
-  local point = first(where(points(1), function(point) return is_closer_traversable(point.x, point.y, x, y) end))
+  local point = first(where(adjacent(), function(point) return is_closer_traversable(point.x, point.y, x, y) end))
   return point and attempt(to_key(point.x, point.y), "attempt_approach")
 end
 
@@ -847,8 +880,12 @@ end
 
 function is_traversable(x, y)
   return travel.feature_traversable(view.feature_at(x, y)) and
-      not monster.get_monster_at(x, y) and
-      view.cloud_at(x, y) ~= "calcifying dust"
+      not is_dangerous_cloud(x, y) and
+      not monster.get_monster_at(x, y)
+end
+
+function is_sold(x, y)
+  return travel.feature_solid(view.feature_at(x, y))
 end
 
 function invisible_monsters(radius)
@@ -857,19 +894,6 @@ end
 
 function is_invisible_monster_present()
   return not options.autopick_on or not is_empty(invisible_monsters())
-end
-
-function avoid_dangerous_clouds()
-  local cloud = view.cloud_at(0, 0)
-  -- handles catoblepas
-  if cloud == "calcifying dust" then
-    local target = closest_monster()
-    if not target then
-      return attempt_mini_explore()
-    end
-    return attempt_approach(closest_adjacent_traversable(target:pos()))
-  end
-  return true
 end
 
 function closest_adjacent_traversable(x, y)
@@ -890,6 +914,10 @@ function closest_adjacent_traversable(x, y)
   end
 end
 
+function adjacent()
+  return where(points(1), function(point) return point.x ~= 0 or point.y ~= 0 end)
+end
+
 ---------------------------------------------------------------------------
 -- complex combat                                                        --
 ---------------------------------------------------------------------------
@@ -905,16 +933,19 @@ function attempt_unstuck()
 end
 
 function attempt_mini_escape()
+  if you.confused() then return false end
   if view.feature_at(0, 0) == "exit_dungeon" and not you.have_orb() then return false end
   if is_up_stairs(0, 0) then return attempt("<", "attempt_mini_escape") end
   return attempt("X<." .. ESCAPE_KEY, "attempt_mini_escape")
 end
 
 function attempt_mini_explore()
+  if you.confused() then return false end
   return attempt("Xo." .. ESCAPE_KEY, "attempt_mini_explore")
 end
 
 function attempt_mini_dive()
+  if you.confused() then return false end
   if is_down_stairs(0, 0) then return attempt(">", "attempt_mini_dive") end
   return attempt("X>." .. ESCAPE_KEY, "attempt_mini_dive")
 end
@@ -938,12 +969,12 @@ end
 function escape()
   if you.absdepth() == 1 and not you.have_orb() then return false end
   if is_up_stairs(0, 0) then return attempt("<", "escape") end
-  local stairs = where(points(1), function(p) return is_up_stairs(p.x, p.y) end)
+  local stairs = where(adjacent(), function(p) return is_up_stairs(p.x, p.y) end)
 
   if length(stairs) > 0 then
     local traversable_stairs = where(stairs, function(p) return is_traversable(p.x, p.y) end)
     local p = first(traversable_stairs)
-	if not p then return false end
+    if not p then return false end
     return attempt(to_key(p.x, p.y), "escape")
   end
 
@@ -1892,89 +1923,8 @@ function best_ac(subtype)
 end
 
 ---------------------------------------------------------------------------
--- general utility                                                       --
+-- functional utility                                                    --
 ---------------------------------------------------------------------------
-
-function print(object, channel)
-  if type(object) == "table" then
-    crawl.mpr(encode(object), channel)
-  else
-    crawl.mpr(object, channel)
-  end
-end
-
-function encode(object)
-  if type(object) == "string" then return '"' .. object .. '"' end
-
-  if type(object) == "table" then
-    local table = {}
-
-    for key, value in pairs(object) do
-      util.append(table, {encode(key) .. ": " .. encode(value)})
-    end
-
-    return "{" .. join(table) .. "}"
-  end
-
- return tostring(object)
-end
-
-function sanitize(string)
-  string = string:gsub("<%w*>", "")
-  string = string:gsub("</%w*>", "")
-  string = string:gsub("[^%w]", "")
-  return string:lower()
-end
-
-function monster_to_table(monster)
-  return {name = monster:name(), x = monster:x_pos(), y = monster:y_pos(), threat = calculate_threat(monster)}
-end
-
-function to_key(x, y)
-  local keys = {"b", "j", "n", "h", "s", "l", "y", "k", "u"}
-  return keys[5 + x - 3 * y]
-end
-
-function control(letter)
-  return string.char(string.byte(letter) - string.byte("a") + 1)
-end
-
-function compare(left, right)
-  if left < right then return -1 end
-  if left > right then return 1 end
-  return 0
-end
-
-function clamp(value, min, max)
-  if value < min then return min end
-  if value > max then return max end
-  return value
-end
-
-function point(a, b)
-  return {x = a, y = b}
-end
-
-function points(radius)
-  radius = radius or 8
-  local result = {}
-
-  for x = -radius, radius do
-    for y = -radius, radius do
-      util.append(result, {point(x, y)})
-    end
-  end
-
-  return result
-end
-
-function distance(x0, y0, x1, y1)
-  return math.max(math.abs(x0 - (x1 or 0)), math.abs(y0 - (y1 or 0)))
-end
-
-function cartesian_distance(x0, y0, x1, y1)
-  return math.sqrt((x0 - (x1 or 0)) ^ 2 + (y0 - (y1 or 0)) ^ 2)
-end
 
 function length(t)
   return table.getn(t)
@@ -2008,6 +1958,21 @@ function map(t, f)
   return result
 end
 
+function join(t)
+  local result = ""
+
+  for key, value in ipairs(t) do
+    result = result .. value
+    if key < length(t) then result = result .. ", " end
+  end
+
+  return result
+end
+
+---------------------------------------------------------------------------
+-- math utility                                                          --
+---------------------------------------------------------------------------
+
 function sum(t)
   local result = 0
 
@@ -2018,15 +1983,90 @@ function sum(t)
   return result
 end
 
-function join(t)
-  local result = ""
+function distance(x0, y0, x1, y1)
+  return math.max(math.abs(x0 - (x1 or 0)), math.abs(y0 - (y1 or 0)))
+end
 
-  for key, value in ipairs(t) do
-    result = result .. value
-	if key < length(t) then result = result .. ", " end
+function cartesian_distance(x0, y0, x1, y1)
+  return math.sqrt((x0 - (x1 or 0)) ^ 2 + (y0 - (y1 or 0)) ^ 2)
+end
+
+
+function compare(left, right)
+  if left < right then return -1 end
+  if left > right then return 1 end
+  return 0
+end
+
+function clamp(value, min, max)
+  if value < min then return min end
+  if value > max then return max end
+  return value
+end
+
+function point(a, b)
+  return {x = a, y = b}
+end
+
+function points(radius)
+  radius = radius or 8
+  local result = {}
+
+  for x = -radius, radius do
+    for y = -radius, radius do
+      util.append(result, {point(x, y)})
+    end
   end
 
   return result
+end
+
+---------------------------------------------------------------------------
+-- general utility                                                       --
+---------------------------------------------------------------------------
+
+function print(object, channel)
+  if type(object) == "table" then
+    crawl.mpr(encode(object), channel)
+  else
+    crawl.mpr(tostring(object), channel)
+  end
+end
+
+function encode(object)
+  if type(object) == "string" then return '"' .. object .. '"' end
+
+  if type(object) == "table" then
+    local table = {}
+
+    for key, value in pairs(object) do
+      util.append(table, {encode(key) .. ": " .. encode(value)})
+    end
+
+    return "{" .. join(table) .. "}"
+  end
+
+  return tostring(object)
+end
+
+function sanitize(string)
+  string = string:gsub("<%w*>", "")
+  string = string:gsub("</%w*>", "")
+  string = string:gsub("[^%w]", "")
+  return string:lower()
+end
+
+function monster_to_table(monster)
+  return {name = monster:name(), x = monster:x_pos(), y = monster:y_pos(), threat = calculate_threat(monster)}
+end
+
+function to_key(x, y)
+  local keys = {"b", "j", "n", "h", "s", "l", "y", "k", "u"}
+  return keys[5 + x - 3 * y]
+end
+
+function control(letter)
+  return string.char(string.byte(letter) - string.byte("a") + 1)
 end
 
 ---------------------------------------------------------------------------
@@ -2034,19 +2074,10 @@ end
 ---------------------------------------------------------------------------
 
 function c_answer_prompt(prompt)
-  if prompt:find("Keep equipping") then
-    return true
-  end
-  if prompt:find("Keep disrobing") then
-    return false
-  end
-  if prompt:find("Really walk") then
-    return true
-  end
-  if prompt:find("Really attack") then
-    stop_running()
-    return false
-  end
+  if prompt:find("Really walk") then return true end
+  if prompt:find("Keep equipping") then return true end
+  if prompt:find("Keep disrobing") then return false end
+
   if prompt:find("Really unwield") or
       prompt:find("Really take off") or
       prompt:find("Really remove") or
@@ -2164,7 +2195,7 @@ function c_message(text, channel)
     c_persist.invisible_monster = sanitize(match)
     local monster = c_persist.monsters[c_persist.invisible_monster]
     travel.set_waypoint(0, monster.x, monster.y)
-	c_persist.invisible_waypoint_exists = true
+    c_persist.invisible_waypoint_exists = true
     return
   end
 
@@ -2173,7 +2204,7 @@ function c_message(text, channel)
     c_persist.invisible_monster = sanitize(match)
     local monster = c_persist.monsters[c_persist.invisible_monster]
     travel.set_waypoint(0, monster.x, monster.y)
-	c_persist.invisible_waypoint_exists = true
+    c_persist.invisible_waypoint_exists = true
     return
   end
 
@@ -2182,7 +2213,7 @@ function c_message(text, channel)
     c_persist.invisible_monster = sanitize(match)
     local monster = c_persist.monsters[c_persist.invisible_monster]
     travel.set_waypoint(0, monster.x, monster.y)
-	c_persist.invisible_waypoint_exists = true
+    c_persist.invisible_waypoint_exists = true
     return
   end
 
@@ -2190,6 +2221,12 @@ function c_message(text, channel)
     c_persist.invisible_monster = nil
     c_persist.invisible_waypoint_exists = false
     return
+  end
+end
+
+function ch_start_running(kind)
+  if kind == "intertravel" and c_persist.flags["exclude"] then
+    exclude_monsters()
   end
 end
 
@@ -2213,17 +2250,31 @@ function debug_escape()
 end
 
 function debug()
-  print("<cyan>test</cyan>")
-end
-
-function ch_start_running(kind)
-  if kind == "intertravel" and c_persist.flags["exclude"] then
-    exclude_monsters()
-  end
+  print(is_dangerous_cloud(0, 0))
+  print(false and nil)
+  print(nil and false)
 end
 
 function persist_monsters(radius)
   util.foreach(map(monsters(radius), monster_to_table), function(table) c_persist.monsters[sanitize(table.name)] = table end)
+end
+
+function is_dangerous_cloud(x, y)
+  local cloud = view.cloud_at(x, y)
+
+  if not cloud or
+      view.is_safe_square(x, y) or
+
+      -- safe clouds
+
+      cloud:find("smoke") or
+      cloud:find("energy") or
+      cloud:find("salt") or
+      cloud:find("rain") then
+    return false
+  end
+
+  return true
 end
 
 }

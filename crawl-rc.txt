@@ -76,7 +76,7 @@ default_manual_training = true
 ---------------------------------------------------------------------------
 
 macros += M o ===start_running
-macros += M p ===step
+macros += M p ===run
 macros += M \{9} ===tab
 macros += M 5 ===wait
 
@@ -123,8 +123,6 @@ end
 ---------------------------------------------------------------------------
 
 function init()
-  crawl.enable_more(false)
-  crawl.more_autoclear(true)
   c_persist.cleared_depth = {}
   c_persist.found = {}
   c_persist.flags = {}
@@ -148,6 +146,9 @@ end
 ---------------------------------------------------------------------------
 
 function ready()
+  crawl.redraw_screen()
+  crawl.enable_more(false)
+  crawl.more_autoclear(true)
   if you.turns() == 0 then init() end
 
   if c_persist.flags.exclude then
@@ -160,9 +161,10 @@ function ready()
   if c_persist.where ~= you.where() then reset() end
   c_persist.where = you.where()
   persist_monsters()
-  crawl.redraw_screen()
   print_information()
-  run()
+
+  if is_scared() then stop_running() end
+  if running then run() end
 end
 
 function print_information()
@@ -181,58 +183,68 @@ function reset()
   stop_escaping()
 end
 
-function run(stepping)
-  if is_scared() then
-
-    if can_walk_away() then
-      start_escaping()
+function run()
+  if is_escaping() or can_stair_dance() then
+    if escape_bug() then
+      print("ESCAPE BUG!!", 6)
+      stop_running()
+      return
     end
 
+    if escape() then return end
+    print("Failed to escape!", 6)
     stop_running()
+    return
   end
 
-  if running or stepping then
-
-    -- todo: clean this up
-
-    if is_escaping() and escape() then
-      return
-    end
-
-    if can_stair_dance() and escape() then
-      return
-    end
-
-    if is_safe() then
-      explore()
-    else
-      if not is_monster_present() then
-
-        -- helps with clouds
-
-        if not attempt_mini_explore() then
-          stop_running()
-        end
-        return
-      end
-
-      if must_hand() then
-        crawl.sendkeys("ab")
-        return
-      end
-
-      if must_berserk() then
-        crawl.sendkeys("aa")
-        return
-      end
-
-      tab(true)
-    end
+  if is_safe() then
+    explore()
+    return
   end
+
+  if not is_monster_present() then
+
+    -- helps with clouds
+
+    if attempt_mini_explore() then return end
+    stop_running()
+    return
+  end
+
+  if is_scared() then
+    if activate_ultra_instinct() then return end
+    stop_running()
+    return
+  end
+
+  fight()
 end
 
-function step()
-  run(true)
+function fight()
+  if must_hand() then
+    crawl.sendkeys("ab")
+    return
+  end
+
+  if must_berserk() then
+    crawl.sendkeys("aa")
+    return
+  end
+
+  tab(true)
+end
+
+function activate_ultra_instinct()
+  print("<cyan>ACTIVATE ULTRA INSTINCT!!</cyan>")
+
+  if count_monsters() == 1 then
+    fight()
+    return true
+  end
+
+  print("ultra instinct failed", 6)
+  fight()
+  return true
 end
 
 ---------------------------------------------------------------------------
@@ -396,17 +408,8 @@ function monsters(radius)
   return result
 end
 
-function is_fearless()
-  if not running then
-    return false
-  end
-  -- todo: allow reckless fighting in some cases
-end
-
 function has_bad_transformation()
-  if you.transform() == "" then
-    return false
-  end
+  if you.transform() == "" then return false end
   return true
 end
 
@@ -586,6 +589,11 @@ function can_stair_dance()
   return false
 end
 
+function escape_bug()
+  local stairs = where(adjacent(), function(point) return is_down_stairs(point.x, point.y) end)
+  return util.exists(stairs, function(point) return monster.get_monster_at(point.x, point.y) end)
+end
+
 function can_use_stairs(monster)
   return not monster:desc(true):find("incapable of using stairs")
 end
@@ -659,20 +667,9 @@ function can_berserk()
 end
 
 function is_scared()
-  if you.poison_survival() < 1 then
-    return true
-  end
-  if not is_safe() then
-    if you.status("barbed spikes") or
-        has_bad_transformation() then
-      return true
-    end
-    if not is_fearless() then
-       -- experimental
-      return adjusted_threat() >= NIGHTMARE
-    end
-  end
-  return false
+  if you.poison_survival() < 1 then return true end
+  if is_safe() then return you.status("barbed spikes") or has_bad_transformation() end
+  return adjusted_threat() >= NIGHTMARE
 end
 
 function has_spell(monster, name)
@@ -770,7 +767,7 @@ function calculate_threat(target)
   end
 
   if not you.res_corr() then
-    util.append(hard, {"jelly"})
+    util.append(hard, {"jelly", "oklob"})
   end
 
   local result = target:threat()
@@ -862,7 +859,7 @@ function hit_closest_monster()
   local target = closest_monster()
   if not target then return false end
   if distance(target:pos()) == 1 then return attempt("*" .. to_key(target:pos()), "hit_closest_monster") end
-  return attempt_approach(x, y)
+  return attempt_approach(target:pos())
 end
 
 function attempt_approach(x, y)
@@ -965,13 +962,13 @@ end
 function escape()
   if you.absdepth() == 1 and not you.have_orb() then return false end
   if is_up_stairs(0, 0) then return attempt("<", "escape") end
-  local stairs = where(adjacent(), function(p) return is_up_stairs(p.x, p.y) end)
+  local stairs = where(adjacent(), function(point) return is_up_stairs(point.x, point.y) end)
 
   if length(stairs) > 0 then
-    local traversable_stairs = where(stairs, function(p) return is_traversable(p.x, p.y) end)
-    local p = first(traversable_stairs)
-    if not p then return false end
-    return attempt(to_key(p.x, p.y), "escape")
+    local traversable_stairs = where(stairs, function(point) return is_traversable(point.x, point.y) end)
+    local point = first(traversable_stairs)
+    if not point then return false end
+    return attempt(to_key(point.x, point.y), "escape")
   end
 
   c_persist.flags["exclude"] = true
@@ -1823,14 +1820,8 @@ function compare_amulets(left, right)
     return 0
   end
 
-  if not is_amulet(left) or not is_amulet(right) then
-    return 0
-  end
-
-  if not left.fully_identified or not right.fully_identified then
-    return 0
-  end
-
+  if not is_amulet(left) or not is_amulet(right) then return 0 end
+  if not left.fully_identified or not right.fully_identified then return 0 end
   return compare(amulet_level(left), amulet_level(right))
 end
 
@@ -2104,7 +2095,7 @@ end
 ---------------------------------------------------------------------------
 
 function c_answer_prompt(prompt)
-  if prompt:find("Really walk") then return true end
+  --if prompt:find("Really walk") then return true end
   if prompt:find("Keep equipping") then return true end
   if prompt:find("Keep disrobing") then return false end
 
@@ -2256,6 +2247,9 @@ end
 
 function ch_start_running(kind)
   if kind == "intertravel" and c_persist.flags["exclude"] then
+
+    -- todo: this does not work when the monster is on stairs!
+
     exclude_monsters()
   end
 end
@@ -2284,8 +2278,7 @@ function species_has_mutation(mutation)
 end
 
 function debug()
-  print(you.mutation_overview())
-  print(species_has_mutation("see invisible"))
+  print(escape_bug())
 end
 
 function persist_monsters(radius)

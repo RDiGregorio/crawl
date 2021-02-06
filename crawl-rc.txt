@@ -20,6 +20,8 @@
 # run on torment
 # add hallway preference, improve the can escape logic
 
+# stop running should take an argument to print why
+
 -------------------------------------------------------------------------
 -- options                                                             --
 -------------------------------------------------------------------------
@@ -111,11 +113,13 @@ function start_running()
   running = true
 end
 
-function stop_running()
+function stop_running(reason)
   if running then
     running = false
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
   end
+
+  if reason then print(reason) end
 end
 
 ---------------------------------------------------------------------------
@@ -180,21 +184,37 @@ function reset()
   c_persist.monsters = {}
   c_persist.invisible_monster = nil
   c_persist.invisible_waypoint_exists = false
+  stop_walking_away()
   stop_escaping()
 end
 
 function run()
-  if is_escaping() or can_stair_dance() then
+  if can_walk_away() then
+    start_walking_away()
+  else
+    stop_walking_away()
+  end
+
+  if is_walking_away() then
     if escape_bug() then
-      print("ESCAPE BUG!!", 6)
-      stop_running()
+      stop_running("Escape bug (monster on stairs)!")
       return
     end
 
-    if escape() then return end
-    print("Failed to escape!", 6)
-    stop_running()
-    return
+    if attempt_escape() then return end
+	stop_walking_away()
+    stop_running("Failed to walk away!")
+  end
+
+  if is_escaping() or can_stair_dance() then
+    if escape_bug() then
+      stop_running("Escape bug (monster on stairs)!")
+      return
+    end
+
+    if attempt_escape() then return end
+	stop_escaping()
+    stop_running("Failed to escape!")
   end
 
   if is_safe() then
@@ -242,6 +262,12 @@ function activate_ultra_instinct()
     return true
   end
 
+  if not you.slowed() and not you.berserk() then
+    -- need to check if escaping is a good idea
+    -- start_escaping()
+    -- return true
+  end
+
   print("ultra instinct failed", 6)
   fight()
   return true
@@ -269,22 +295,7 @@ function is_tired()
 end
 
 function explore()
-  -- this might never get run, need to debug
-
-  if you.on_fire() then
-    if attempt("s") then return end
-
-    -- we are stuck
-
-    stop_running()
-    return
-  end
-
   if you.berserk() or is_tired() then
-
-    -- todo: handle being on fire or in clouds
-    -- can't fast travel in clouds
-
     if attempt("5") then return end
 
     -- we are stuck
@@ -317,22 +328,12 @@ end
 
 function is_up_stairs(x, y)
   local feature = view.feature_at(x, y)
-
-  if feature then
-    return feature:find("stone_stairs_up") or
-        feature:find("escape_hatch_up") or
-        feature:find("exit")
-  end
-
-  return false
+  return feature and (feature:find("stone_stairs_up") or feature:find("escape_hatch_up") or feature:find("exit"))
 end
 
 function is_down_stairs(x, y)
   local feature = view.feature_at(x, y)
-  if feature then
-    return feature:find("stairs_down")
-  end
-  return false
+  return feature and feature:find("stairs_down")
 end
 
 function cleared_depth(branch)
@@ -342,6 +343,10 @@ end
 
 function is_shafted()
   return you.depth() > cleared_depth() + 1
+end
+
+function is_depth_cleared()
+  return you.depth() <= cleared_depth()
 end
 
 function attempt_goal()
@@ -520,42 +525,46 @@ function must_hand()
   return false
 end
 
-function must_start_escaping()
-  -- return adjusted_threat() >= NIGHTMARE * 4 / 3
-  return false
-end
-
-
 function can_walk_away()
-  -- disabled for now
+  if can_see_up_stairs() and not can_stair_dance() then return false end
 
-  if true then return false end
+  if count_monsters() < 1 then return is_walking_away() end
 
   -- this is just a starting point, and needs to be improved
 
-  if can_stair_dance() then return true end
+  if you.absdepth() == 1 and not you.have_orb() then return false end
 
-  if you.depth() <= cleared_depth() then return false end
-
-  if true then return true end
+  if is_depth_cleared() then return false end
 
   -- todo: in some cases you can walk away while berserk or slow
 
   if you.berserk() or you.slowed() or util.exists(monsters(1), is_fast_monster) then return false end
 
-  local predicate = function(monster)
-    return monster:has_known_ranged_attack()
-  end
-
   -- todo: in some cases you can walk away from monsters with ranged attacks
 
-  if length(where(monsters(), predicate)) > 0 then return false end
-
-  return true
+  if length(where(monsters(), function(monster) return monster:has_known_ranged_attack() end)) > 0 then return false end
+  return prevent_infinite_dancing()
 end
 
 function can_stair_dance()
   if you.absdepth() == 1 and not you.have_orb() or not can_see_up_stairs() then return false end
+
+  -- todo: this does not work on ascension
+
+  if is_depth_cleared() then return false end
+
+  -- prevents stair dancing certain monsters
+
+  if find_monster("Sigmund") then return false end
+
+  -- prevents stair dancing loops caused by monsters with reach
+
+  local can_reach = function(monster)
+    local dist = distance(monster:pos())
+    return dist > 0 and dist <= monster:reach_range()
+  end
+
+  if util.forall(monsters(), can_reach) then return false end
 
   -- prevents stair dancing if only undead monsters are adjacent
 
@@ -563,30 +572,23 @@ function can_stair_dance()
     return not can_use_stairs(monster)
   end
 
-  if count_monsters(1, can_use_stairs) == 0 and count_monsters(1, can_not_use_stairs) > 0 then
-    return false
+  if count_monsters(1, can_use_stairs) == 0 and count_monsters(1, can_not_use_stairs) > 0 then return false end
+  return count_monsters() > count_monsters(1) and prevent_infinite_dancing()
+end
+
+function prevent_infinite_dancing(limit)
+  local monster = closest_monster()
+  local previous = c_persist.dancing
+  local current = {name = monster:name(), count = 1}
+
+  if previous and previous.name == current.name then
+    previous.count = previous.count + 1
+    if previous.count >= (limit or 100) then return false end
+  else
+    c_persist.dancing = current
   end
 
-  local result = count_monsters() > count_monsters(1)
-
-  -- prevents infinite stair dancing loops
-
-  if result then
-    local monster = closest_monster()
-    local previous = c_persist.dancing
-    local current = {name = monster:name(), count = 1}
-
-    if previous and previous.name == current.name then
-      previous.count = previous.count + 1
-      if previous.count >= 20 then return false end
-    else
-      c_persist.dancing = current
-    end
-
-    return true
-  end
-
-  return false
+  return true
 end
 
 function escape_bug()
@@ -612,6 +614,10 @@ end
 
 function is_monster(monster, pattern)
   return monster:name():find(pattern)
+end
+
+function is_monster_any(monster, patterns)
+  return util.exists(patterns, function(pattern) return is_monster(monster, pattern) end)
 end
 
 function find_monster(pattern, radius)
@@ -959,20 +965,32 @@ function stop_escaping()
   c_persist.flags.escaping = false
 end
 
-function escape()
+function is_walking_away()
+  return c_persist.flags.walking_away or false
+end
+
+function start_walking_away()
+  c_persist.flags.walking_away = true
+end
+
+function stop_walking_away()
+  c_persist.flags.walking_away = false
+end
+
+function attempt_escape()
   if you.absdepth() == 1 and not you.have_orb() then return false end
-  if is_up_stairs(0, 0) then return attempt("<", "escape") end
+  if is_up_stairs(0, 0) then return attempt("<", "attempt_escape") end
   local stairs = where(adjacent(), function(point) return is_up_stairs(point.x, point.y) end)
 
   if length(stairs) > 0 then
     local traversable_stairs = where(stairs, function(point) return is_traversable(point.x, point.y) end)
     local point = first(traversable_stairs)
     if not point then return false end
-    return attempt(to_key(point.x, point.y), "escape")
+    return attempt(to_key(point.x, point.y), "attempt_escape")
   end
 
-  c_persist.flags["exclude"] = true
-  return attempt("X<." .. ESCAPE_KEY, "escape")
+  c_persist.flags.exclude = true
+  return attempt("X<." .. ESCAPE_KEY, "attempt_escape")
 end
 
 function exclude_monsters(radius)
@@ -1312,7 +1330,7 @@ function identify_items()
     if item.class(true) == "scroll" and
         not item.fully_identified and
         item.quantity > 1 and
-        (c_persist.found["scroll of identify"] or want_to_use_scroll_of_identify()) then
+        (c_persist.found.scroll_of_identify or want_to_use_scroll_of_identify()) then
       return read_scroll(items.index_to_letter(item.slot))
     end
   end
@@ -1980,6 +1998,8 @@ function map(t, f)
 end
 
 function join(t)
+  -- replace this with util.join?
+
   local result = ""
 
   for key, value in ipairs(t) do
@@ -2166,7 +2186,7 @@ function c_message(text, channel)
   -- item identification
 
   if text:find("is a scroll of identify") then
-    c_persist.found["scroll of identify"] = true
+    c_persist.found.scroll_of_identify = true
 
     for item in inventory() do
       if want_to_identify_with_scroll(item) then
@@ -2246,7 +2266,7 @@ function c_message(text, channel)
 end
 
 function ch_start_running(kind)
-  if kind == "intertravel" and c_persist.flags["exclude"] then
+  if kind == "intertravel" and c_persist.flags.exclude then
 
     -- todo: this does not work when the monster is on stairs!
 
@@ -2262,23 +2282,12 @@ end
 -- debug                                                                 --
 ---------------------------------------------------------------------------
 
-function debug_escape()
-  if is_up_stairs(0, 0) then
-    print("ON STAIRS!")
-    return
-  end
-  if not is_escaping() then
-    start_escaping()
-  end
-  step()
-end
-
 function species_has_mutation(mutation)
   return you.get_base_mutation_level(mutation, true, false, false) > 0
 end
 
 function debug()
-  print(escape_bug())
+  print(length(where(monsters(), function(monster) return monster:has_known_ranged_attack() end)))
 end
 
 function persist_monsters(radius)

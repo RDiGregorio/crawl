@@ -167,7 +167,7 @@ function ready()
   persist_monsters()
   print_information()
 
-  if is_scared() then stop_running() end
+  if is_scared() and hp_percent() <= 50 then stop_running() end
   if running then run() end
 end
 
@@ -231,10 +231,10 @@ function run()
     return
   end
 
-  if is_scared() then
-    if activate_ultra_instinct() then return end
-    stop_running()
-    return
+  if adjusted_threat() >= NIGHTMARE then
+    -- if activate_ultra_instinct() then return end
+    -- stop_running()
+    -- return
   end
 
   fight()
@@ -269,8 +269,10 @@ function activate_ultra_instinct()
   end
 
   print("ultra instinct failed", 6)
-  fight()
   return true
+
+  -- fight()
+  -- return true
 end
 
 ---------------------------------------------------------------------------
@@ -324,6 +326,11 @@ function explore()
   -- we are stuck
 
   stop_running()
+end
+
+function is_feature_at(pattern, x, y)
+  local feature = view.feature_at(x, y)
+  return feature and feature:find(pattern)
 end
 
 function is_up_stairs(x, y)
@@ -536,13 +543,13 @@ function can_walk_away()
 
   if is_depth_cleared() then return false end
 
-  -- todo: in some cases you can walk away while berserk or slow
+  -- todo: in some cases you can walk away under these conditions
 
-  if you.berserk() or you.slowed() or util.exists(monsters(1), is_fast_monster) then return false end
+  if you.slowed() and count_monsters(1) > 0 then return false end
+  if you.berserk() or util.exists(monsters(1), is_fast_monster) then return false end
 
-  -- todo: in some cases you can walk away from monsters with ranged attacks
-
-  if length(where(monsters(), function(monster) return monster:has_known_ranged_attack() end)) > 0 then return false end
+  if count_monsters(nil, function(monster) return monster:has_known_ranged_attack() end) > 0 then return false end
+  -- if length(where(monsters(), function(monster) return monster:has_known_ranged_attack() end)) > 0 then return false end
   return prevent_infinite_dancing()
 end
 
@@ -557,14 +564,14 @@ function can_stair_dance()
 
   if find_monster("Sigmund") then return false end
 
-  -- prevents stair dancing loops caused by monsters with reach
+  -- prevents stair dancing loops caused by monsters with reach (might not be needed?)
 
-  local can_reach = function(monster)
-    local dist = distance(monster:pos())
-    return dist > 0 and dist <= monster:reach_range()
-  end
+  -- local can_reach = function(monster)
+  --   local dist = distance(monster:pos())
+  --   return dist > 0 and dist <= monster:reach_range()
+  -- end
 
-  if util.forall(monsters(), can_reach) then return false end
+  -- if util.forall(monsters(), can_reach) then return false end
 
   -- prevents stair dancing if only undead monsters are adjacent
 
@@ -609,7 +616,7 @@ function can_see_up_stairs(radius)
 end
 
 function is_fast_monster(monster)
-  return monster:speed_description():find("fast")
+  return monster:speed_description():find("fast") or monster:desc(true):find("quickly%.")
 end
 
 function is_monster(monster, pattern)
@@ -675,7 +682,7 @@ end
 function is_scared()
   if you.poison_survival() < 1 then return true end
   if is_safe() then return you.status("barbed spikes") or has_bad_transformation() end
-  return adjusted_threat() >= NIGHTMARE
+  return adjusted_threat() >= NIGHTMARE -- IMPOSSIBLE
 end
 
 function has_spell(monster, name)
@@ -744,7 +751,7 @@ function print_extra_hard_monsters(radius)
 end
 
 function calculate_threat(target)
-  local hard = {"Natasha"}
+  local hard = {"Natasha", "Eustachio"}
 
   -- early game
 
@@ -995,6 +1002,11 @@ end
 
 function exclude_monsters(radius)
   util.foreach(monsters(), function(monster) travel.set_exclude(monster:x_pos(), monster:y_pos(), radius or 0) end)
+end
+
+function exclude_runed_doors(radius)
+  local points = where(points(), function(point) return is_feature_at("runed_clear_door", point.x, point.y) end)
+  util.foreach(points, function(point) travel.set_exclude(point.x, point.y, radius or 0) end)
 end
 
 function clear_exclusions()
@@ -2156,6 +2168,7 @@ function c_message(text, channel)
   end
 
   if text:find("explore") or text:find("exploring") then
+    exclude_runed_doors()
 
     -- finished exploring
 
@@ -2287,7 +2300,7 @@ function species_has_mutation(mutation)
 end
 
 function debug()
-  print(length(where(monsters(), function(monster) return monster:has_known_ranged_attack() end)))
+  print(c_persist.monsters[c_persist.invisible_monster])
 end
 
 function persist_monsters(radius)

@@ -51,6 +51,7 @@ explore_stop += greedy_pickup
 #autopickup_exceptions += polymorph, random effects
 
 autopickup_exceptions += <phantom mirror, <throwing net
+autopickup_exceptions += <curare, <poisoned darts
 
 auto_exclude = oklob plant, Roxanne, orange crystal statue, diamond obelisk
 
@@ -366,6 +367,10 @@ function best_up_stairs()
     return is_up_stairs(point.x, point.y) and not is_closer_to_a_monster(point.x, point.y)
   end)
 
+  if is_empty(stairs) then
+    stairs = where(points(100), function(point) return is_up_stairs(point.x, point.y) end)
+  end
+
   table.sort(stairs, function(left, right) return distance(left.x, left.y) < distance(right.x, right.y) end)
   return first(stairs)
 end
@@ -391,24 +396,6 @@ end
 ---------------------------------------------------------------------------
 -- combat                                                                --
 ---------------------------------------------------------------------------
-
-function panic()
-
-  -- todo: conditionally use hand, bia, ambrosia, healing, curing
-
-  if not you.teleporting() and teleport() then return true end
-  return false
-end
-
-function teleport()
-  for item in inventory() do
-    if item.class(true) == "scroll" and item.subtype() == "teleportation" then
-      return read_scroll(letter(item))
-    end
-  end
-
-  return false
-end
 
 function can_read()
   if you.status():find("cannot breathe") then return false end
@@ -503,16 +490,32 @@ function tab(is_reckless)
 end
 
 function attempt_tricks()
+  if util.exists(monsters(), is_auto_excluded) and avoid_exclusions() then return true end
   local monster = closest_monster()
   if not monster then return false end
 
   if is_fish(monster) and distance(monster:pos()) > 1 then
+
+    -- attempts to escape if hurt
+
+    -- if hp_percent() <= 50 then
+    --  local stairs = best_up_stairs()
+    --  return stairs and attempt_fast_travel(stairs.x, stairs.y)	
+	-- end
+
+    -- attempts to use wands
+
     local item = best_kill_wand(distance(monster:pos()))
     if item then return attempt("V" .. letter(item) .. ENTER_KEY, "attempt_tricks") end
+
+    -- attemps to use darts
+	-- todo: check for :is("extremely poisoned")
+
+    local slot = letter("curare") or letter("poisoned darts")
+    if slot then return attempt("F" .. slot .. ENTER_KEY, "attempt_tricks") end
   end
 
-  -- todo: handling electric eels needs a lot of work
-  -- return attempt_mini_escape()
+  -- fights normally
 
   return false
 end
@@ -585,6 +588,11 @@ end
 
 function is_summoned(monster)
   return monster:is("summoned")
+end
+
+function is_auto_excluded(monster)
+  local names = {"oklob", "Roxanne", "orange crystal statue", "diamond obelisk"}
+  return util.exists(names, function(name) return monster:name():find(name) end)
 end
 
 function has_ranged_attack(monster)
@@ -713,6 +721,27 @@ end
 
 function find_monsters(patterns, radius)
   return where(monsters(radius), function(monster) return is_monster_any(monster, patterns) end)
+end
+
+function stationary_monsters(radius)
+  return where(monsters(radius), function(monster) return monster:is_stationary() end)
+end
+
+function closeness(monsters, x, y)
+  return sum(map(monsters, function(monster) return 1 / distance(monster:x_pos(), monster:y_pos(), x or 0, y or 0) end))
+end
+
+function safest_point(radius, dangerous_monsters, all_monsters)
+  local safe_points = where(points(radius), function(point) return view.is_safe_square(point.x, point.y) end)
+  local danger = function(point) return closeness(dangerous_monsters, point.x, point.y) * 1000 + closeness(all_monsters) end
+  local result = point(0, 0)
+  for _, point in ipairs(safe_points) do if danger(point) < danger(result) then result = point end end
+  return result
+end
+
+function avoid_exclusions()
+  local safest = safest_point(1, stationary_monsters(), monsters())
+  return not point_equals(safest, point(0, 0)) and attempt(to_key(safest.x, safest.y), "avoid_exclusions")
 end
 
 function invisible_monster_location(radius, guess)
@@ -1016,6 +1045,12 @@ function is_closer_to_a_monster(x, y)
 end
 
 function is_traversable(x, y)
+  -- todo: need to account for flying
+
+  if not view.is_safe_square(x, y) then return false end
+
+  -- todo: the below code might not be needed!
+
   return travel.feature_traversable(view.feature_at(x, y)) and
       not is_dangerous_cloud(x, y) and
       not monster.get_monster_at(x, y)
@@ -1062,6 +1097,32 @@ function adjacent_to(x, y)
   return map(adjacent(), function(point) return add_points(point, other) end)
 end
 
+function species_has_mutation(mutation)
+  return you.get_base_mutation_level(mutation, true, false, false) > 0
+end
+
+function persist_monsters(radius)
+  util.foreach(map(monsters(radius), monster_to_table), function(table) c_persist.monsters[sanitize(table.name)] = table end)
+end
+
+function is_dangerous_cloud(x, y)
+  local cloud = view.cloud_at(x, y)
+
+  if not cloud or
+      view.is_safe_square(x, y) or
+
+      -- safe clouds
+
+      cloud:find("smoke") or
+      cloud:find("energy") or
+      cloud:find("salt") or
+      cloud:find("rain") then
+    return false
+  end
+
+  return true
+end
+
 ---------------------------------------------------------------------------
 -- complex combat                                                        --
 ---------------------------------------------------------------------------
@@ -1071,6 +1132,11 @@ end
 ---------------------------------------------------------------------------
 -- fast travel                                                           --
 ---------------------------------------------------------------------------
+
+function attempt_fast_travel(x, y)
+  if x == 0 and x == 0 then return false end
+  return attempt("X" .. delta_to_keys(x, y) .. ".", "attempt_fast_travel")
+end
 
 function attempt_unstuck()
   return attempt_mini_escape() or attempt_mini_explore() or attempt_mini_dive()
@@ -1575,8 +1641,7 @@ function is_wand(item)
   return item.class(true) == "wand"
 end
 
-function best_kill_wand(radius)
-  radius = radius or 8
+function best_kill_wand(distance)
   local wands = where(items.inventory(), is_wand)
   local result = nil
 
@@ -1584,8 +1649,8 @@ function best_kill_wand(radius)
     return first(where(wands, function(wand) return wand.subtype() == subtype end))
   end
 
-  if radius <= 5 then result = find_wand("acid") end
-  if radius <= 6 then result = result or find_wand("iceblast") end
+  if not distance or distance <= 5 then result = find_wand("acid") end
+  if not distance or distance <= 6 then result = result or find_wand("iceblast") end
 
   -- todo: does not work with plants in the way!
   -- result = result or find_wand("disintegration")
@@ -2193,12 +2258,11 @@ end
 ---------------------------------------------------------------------------
 
 function sum(t)
-  local result = 0
+  return reduce(t, 0, function(left, right) return left + right end)
+end
 
-  for _, a in ipairs(t) do
-    result = result + a
-  end
-
+function reduce(t, result, f)
+  for _, a in ipairs(t) do result = f(result, a) end
   return result
 end
 
@@ -2227,8 +2291,20 @@ function point(a, b)
   return {x = a, y = b}
 end
 
+function point_equals(left, right)
+  return left.x == right.x and left.y == right.y
+end
+
 function add_points(left, right)
   return point(left.x + right.x, left.y + right.y)
+end
+
+function subtract_points(left, right)
+  return point(left.x - right.x, left.y - right.y)
+end
+
+function clamp_point(a, min, max)
+  return point(clamp(a.x, min, max), clamp(a.y, min, max))
 end
 
 function points(radius)
@@ -2286,6 +2362,20 @@ end
 function to_key(x, y)
   local keys = {"b", "j", "n", "h", "s", "l", "y", "k", "u"}
   return keys[5 + x - 3 * y]
+end
+
+function delta_to_keys(x, y)
+  local start = point(0, 0)
+  local finish = point(x, y)
+  local result = ""
+
+  while not point_equals(start, finish) do
+    local delta = clamp_point(subtract_points(finish, start), -1, 1)
+	result = result .. to_key(delta.x, delta.y)
+    start = add_points(start, delta)
+  end
+
+  return result
 end
 
 function control(letter)
@@ -2366,6 +2456,15 @@ function c_message(text, channel)
 
     if you.depth() == cleared_depth() + 1 then c_persist.cleared_depth[you.branch()] = you.depth() end
     if attempt_unstuck() then return end
+
+    -- we are stuck
+
+    stop_running()
+    return
+  end
+
+  if text:find("stopping travel") then
+    if avoid_exclusions() then return end
 
     -- we are stuck
 
@@ -2477,38 +2576,8 @@ end
 -- debug                                                                 --
 ---------------------------------------------------------------------------
 
-function species_has_mutation(mutation)
-  return you.get_base_mutation_level(mutation, true, false, false) > 0
-end
-
 function debug()
-
-  -- need to add pathfinding
-
-  local stairs = best_up_stairs()
-  print(stairs)
-end
-
-function persist_monsters(radius)
-  util.foreach(map(monsters(radius), monster_to_table), function(table) c_persist.monsters[sanitize(table.name)] = table end)
-end
-
-function is_dangerous_cloud(x, y)
-  local cloud = view.cloud_at(x, y)
-
-  if not cloud or
-      view.is_safe_square(x, y) or
-
-      -- safe clouds
-
-      cloud:find("smoke") or
-      cloud:find("energy") or
-      cloud:find("salt") or
-      cloud:find("rain") then
-    return false
-  end
-
-  return true
+  print(safest_point(1, stationary_monsters(), monsters()))
 end
 
 }

@@ -67,6 +67,7 @@ message_colour += mute:menu to convert
 message_colour += mute:Move the cursor to view the level map
 message_colour += mute:Returning to the game
 message_colour += mute:Waypoint 0
+message_colour += mute:dead coroutine
 
 species = ho
 background = be
@@ -162,6 +163,11 @@ function ready()
     clear_exclusions()
   end
 
+  if c_persist.flags.dangerous_down_stairs then
+    if is_down_stairs(0, 0) then travel.set_exclude(0, 0, 0) end
+    c_persist.flags.dangerous_down_stairs = false
+  end
+
   -- todo: this does not work in pan
 
   if c_persist.where ~= you.where() then reset() end
@@ -198,9 +204,9 @@ function run()
     end
 
     if attempt_escape() then return end
-	stop_escaping()
+    stop_escaping()
     stop_running("Failed to escape!")
-	return
+    return
   end
 
   if can_walk_away() then
@@ -216,7 +222,7 @@ function run()
     end
 
     if attempt_escape() then return end
-	stop_walking_away()
+    stop_walking_away()
     -- stop_running("Failed to walk away!")
   end
 
@@ -239,7 +245,7 @@ function run()
 
     -- helps with clouds
 
-	if attempt_unstuck() then return end
+    if attempt_unstuck() then return end
     stop_running()
     return
   end
@@ -313,7 +319,7 @@ end
 
 function explore()
   if you.berserk() or is_tired() then
-    if attempt("5") then return end
+    if attempt_rest() then return end
 
     -- we are stuck
 
@@ -330,7 +336,7 @@ function explore()
   if drop_junk() then return end
 
   if is_shafted() then
-    if attempt_unstuck() then return end
+    if attempt_mini_escape() or attempt_explore() then return end
 
     -- we are stuck
 
@@ -355,6 +361,15 @@ function is_up_stairs(x, y)
   return feature and (feature:find("stone_stairs_up") or feature:find("escape_hatch_up") or feature:find("exit"))
 end
 
+function best_up_stairs()
+  local stairs = where(points(100), function(point)
+    return is_up_stairs(point.x, point.y) and not is_closer_to_a_monster(point.x, point.y)
+  end)
+
+  table.sort(stairs, function(left, right) return distance(left.x, left.y) < distance(right.x, right.y) end)
+  return first(stairs)
+end
+
 function is_down_stairs(x, y)
   local feature = view.feature_at(x, y)
   return feature and feature:find("stairs_down")
@@ -371,32 +386,6 @@ end
 
 function is_depth_cleared()
   return you.depth() <= cleared_depth()
-end
-
-function attempt_goal()
-  return attempt("G" .. goal() .. ENTER_KEY .. ENTER_KEY, "attempt_goal")
-end
-
-function goal()
-  if c_persist.found["Temple"] and c_persist.cleared_depth["Temple"] ~= 1 then
-    return "T"
-  end
-
-  if c_persist.found["Lair"] then
-    if c_persist.cleared_depth["Lair"] ~= 6 then
-      return "L" .. cleared_depth("Lair") + 1
-    end
-
-    if c_persist.found["Orc"] and c_persist.cleared_depth["Orc"] ~= 2 then
-      return "O" .. cleared_depth("Orc") + 1
-    end
-  end
-
-  if c_persist.cleared_depth["D"] ~= 15 then
-      return "D" .. cleared_depth("D") + 1
-  end
-
-  return ""
 end
 
 ---------------------------------------------------------------------------
@@ -451,7 +440,7 @@ function tab(is_reckless)
   if is_dangerous_cloud(0, 0) then
     local monster = closest_monster()
     if monster and attempt_approach(closest_adjacent_traversable_to(monster:pos())) then return end
-	if attempt_unstuck() then return end
+    if attempt_unstuck() then return end
 
     -- we are stuck
 
@@ -517,10 +506,13 @@ function attempt_tricks()
   local monster = closest_monster()
   if not monster then return false end
 
-  if is_monster(monster, "electric eel") and distance(monster:pos()) > 1 then
+  if is_fish(monster) and distance(monster:pos()) > 1 then
     local item = best_kill_wand(distance(monster:pos()))
-	if item then return attempt("V" .. letter(item) .. ENTER_KEY) end
+    if item then return attempt("V" .. letter(item) .. ENTER_KEY, "attempt_tricks") end
   end
+
+  -- todo: handling electric eels needs a lot of work
+  -- return attempt_mini_escape()
 
   return false
 end
@@ -531,32 +523,26 @@ function swing_at_nothing()
 end
 
 function wait()
-  if is_tired() or
-      you.berserk() or
-      crawl.yesno("Are you sure you want to wait?", true, "n") then
-    crawl.sendkeys("5")
+  if is_tired() or you.berserk() or crawl.yesno("Are you sure you want to wait?", true, "n") then
+    return attempt_rest()
+  else
+    return false
   end
 end
 
+function attempt_rest()
+  return attempt("5", "attempt_rest")
+end
+
 function must_berserk()
-  -- todo: add better checks for if this ability is possible
-  if is_safe() or not can_berserk() then
-    return false
-  end
+  if is_safe() or not can_berserk() then return false end
   return is_angry()
 end
 
 function must_hand()
-  -- todo: add better checks for if this ability is possible
-  if is_safe() or
-    you.piety_rank() < 2 or
-    you.regenerating() or
-    you.berserk() then
-    return false
-  end
-
+  if not can_hand() then return false end
+  if you.poison_survival() < 1 then return true end
   local names = {"Sigmund", "Grinder", "Maggie", "Louise"}
-
   return length(find_monsters(names)) > 0
 end
 
@@ -574,23 +560,27 @@ function can_walk_away()
 
   -- todo: in some cases you can walk away under these conditions
 
-  if you.slowed() or you.berserk() and count_monsters(1) > 0 then return false end
+  if you.berserk() or you.slowed() and count_monsters(1) > 0 then return false end
 
   local is_fast_threat = function(monster)
-    return is_fast_monster(monster) and calculate_threat(monster) >= MEDIUM
+    return is_fast_monster(monster) and adjusted_threat(1) >= MEDIUM
   end
 
   if you.berserk() or util.exists(monsters(1), is_fast_threat) then return false end
 
   -- prevents walking away from certain monsters
 
-  if util.exists(monsters(), is_hated) then return false end
+  if is_closest_monster_hated() and adjusted_threat() < NIGHTMARE then return false end
 
   -- this is too broad, should technically run from everything?
 
   -- if count_monsters(nil, has_ranged_attack) > 0 then return false end
 
   return true
+end
+
+function can_escape()
+  if count_monsters() < 1 then return is_escaping() end
 end
 
 function is_summoned(monster)
@@ -620,7 +610,11 @@ function can_stair_dance()
 
   -- prevents stair dancing certain monsters
 
-  if util.exists(monsters(), is_hated) then return false end
+  if is_closest_monster_hated() and adjusted_threat() < NIGHTMARE then return false end
+
+  -- avoids summons
+
+  if util.exists(monsters(), is_summoned) then return true end
 
   -- prevents stair dancing if only undead monsters are adjacent
 
@@ -629,17 +623,27 @@ function can_stair_dance()
   end
 
   if count_monsters(1, can_use_stairs) == 0 and count_monsters(1, can_not_use_stairs) > 0 then return false end
-
   return count_monsters() > count_monsters(1)
 end
 
-function is_hated(monster)
+function is_closest_monster_hated()
+  local monster = closest_monster()
+  return monster and is_hated(monster)
+end
 
-  -- this should be more difficult and account for monster difficulty
+function is_hated(monster)
+  if is_fish(monster) then return true end
+
+  -- todo: this should be more difficult and account for monster difficulty
   -- that is, you can walk away from late game centaurs
 
-  local names = {"Sigmund", "Maggie", "Louise", "electric eel", "lava snake", "centaur"}
-  return length(find_monsters(names)) > 0
+  local names = {"Sigmund", "Maggie", "Louise", "centaur"}
+  return util.exists(names, function(name) return monster:name():find(name) end)
+end
+
+function is_fish(monster)
+  local names = {"electric eel"}
+  return util.exists(names, function(name) return monster:name():find(name) end)
 end
 
 function prevent_infinite_dancing(limit)
@@ -670,6 +674,13 @@ function prevent_infinite_dancing(limit)
 end
 
 function escape_bug()
+
+  -- this bug is not a big deal in some cases
+
+  if adjusted_threat() < MEDIUM then return false end
+
+  -- exlcuded monsters are not avoided while on stairs
+
   local stairs = where(adjacent(), function(point) return is_down_stairs(point.x, point.y) end)
   return util.exists(stairs, function(point) return monster.get_monster_at(point.x, point.y) end)
 end
@@ -679,11 +690,9 @@ function can_use_stairs(monster)
 end
 
 function can_see_up_stairs(radius)
-  local predicate = function(point)
+  return util.exists(points(radius), function(point)
     return is_up_stairs(point.x, point.y) and you.see_cell_no_trans(point.x, point.y)
-  end
-
-  return length(where(points(radius), predicate)) > 0
+  end)
 end
 
 function is_fast_monster(monster)
@@ -737,6 +746,10 @@ function is_angry()
   local adjacent = adjusted_threat(1)
   local total = adjusted_threat()
 
+  -- berserk is not used against only summons
+
+  if util.forall(monsters(1), is_summoned) then return false end
+
   -- berserk is used at 75% health against monsters with yellow names
 
   return adjacent >= MEDIUM and total >= MEDIUM * 4 / 3
@@ -754,18 +767,53 @@ function can_berserk()
       not you.caught()
 end
 
+function can_hand()
+  return you.god() == "Trog" and
+      you.piety_rank() > 1 and
+      not you.berserk() and
+      not you.regenerating() and
+      not you.confused() and
+      not you.silenced()
+end
+
+function can_climb_up()
+  return is_up_stairs(0, 0) and not you.mesmerised() and not you.constricted()
+end
+
+function cure()
+  local slot = letter("of curing")
+  return slot and drink_potion(slot)
+end
+
+function drink_potion(slot)
+  return can_drink() and attempt("q" .. slot, "drink_potion") 
+end
+
+function can_drink()
+  return you.race() ~= "Mummy" and
+      you.transform() ~= "lich" and
+      not you.berserk() and
+      not you.status("no potions")
+end
+
 function is_scared()
-  local exceptions = {"electric eel"}
+  local exceptions = {"electric eel", "oklob"}
   if util.exists(exceptions, find_monster) then return true end
   if you.poison_survival() < 1 then return true end
   if is_safe() then return you.status("barbed spikes") or has_bad_transformation() end
+
+  -- up stairs are relatively safe
+  -- if can_climb_up() then return false end
+
   local threat = adjusted_threat()
 
   -- todo: better handle summons
 
   if util.exists(monsters(), is_summoned) then return true end
-  if count_monsters() < 2 then return threat >= IMPOSSIBLE end
-  return threat >= NIGHTMARE
+
+  if you.status("berserk cooldown") then return threat >= NIGHTMARE end
+
+  return threat >= IMPOSSIBLE
 end
 
 function has_spell(monster, name)
@@ -802,7 +850,6 @@ function adjusted_threat(radius)
   local multiplier = 1
   if you.slowed() then multiplier = multiplier + 1 end
   if you.confused() then multiplier = multiplier + 1 end
-  if you.poisoned() then multiplier = multiplier + 1 end
   if you.corrosion() > 0 then multiplier = multiplier + 1 end
   return threat(radius) * multiplier * 100 / hp_percent()
 end
@@ -848,9 +895,9 @@ function calculate_threat(target)
 
   util.append(hard, {"ugly thing", "boggart", "lurking horror"})
 
-  -- giants
+  -- giants and dragons
 
-  util.append(hard, {"ogre", "cyclops", "ettin", "titan", "juggernaut"})
+  util.append(hard, {"ogre", "cyclops", "ettin", "titan", "juggernaut", "dragon"})
 
   -- resistances
 
@@ -964,6 +1011,10 @@ function is_closer_traversable(x0, y0, x1, y1)
   return is_traversable(x0, y0) and distance(x0, y0, x1, y1) < distance(x1, y1)
 end
 
+function is_closer_to_a_monster(x, y)
+  return util.exists(monsters(), function(monster) return distance(monster:x_pos(), monster:y_pos(), x, y) < distance(x, y) end)
+end
+
 function is_traversable(x, y)
   return travel.feature_traversable(view.feature_at(x, y)) and
       not is_dangerous_cloud(x, y) and
@@ -975,7 +1026,9 @@ function is_sold(x, y)
 end
 
 function invisible_monsters(radius)
-  return where(points(radius), function(point) return view.invisible_monster(point.x, point.y) end)
+  return where(points(radius), function(point)
+    return view.invisible_monster(point.x, point.y) and you.see_cell_no_trans(point.x, point.y)
+  end)
 end
 
 function is_invisible_monster_present()
@@ -1024,30 +1077,31 @@ function attempt_unstuck()
 end
 
 function attempt_mini_escape()
-  if you.confused() then return false end
+  if you.confused() or you.mesmerised() then return false end
   if view.feature_at(0, 0) == "exit_dungeon" and not you.have_orb() then return false end
+  if not prevent_infinite_dancing() then return false end
   if is_up_stairs(0, 0) then return attempt("<", "attempt_mini_escape") end
   return attempt("X<." .. ESCAPE_KEY, "attempt_mini_escape")
 end
 
 function attempt_mini_explore()
-  if you.confused() then return false end
+  if you.confused() or you.mesmerised() then return false end
   return attempt("Xo." .. ESCAPE_KEY, "attempt_mini_explore")
 end
 
 function attempt_mini_dive()
-  if you.confused() then return false end
+  if you.confused() or you.mesmerised() then return false end
   if is_down_stairs(0, 0) then return attempt(">", "attempt_mini_dive") end
-  return attempt("X>." .. ESCAPE_KEY, "attempt_mini_dive")
+  return attempt("G>" .. ESCAPE_KEY, "attempt_mini_dive")
 end
 
 function attempt_explore()
-  if you.confused() then return false end
+  if you.confused() or you.mesmerised() then return false end
   return attempt("o", "attempt_explore")
 end
 
 function attempt_escape()
-  if you.confused() then return false end
+  if you.confused() or you.mesmerised() then return false end
   if you.absdepth() == 1 and not you.have_orb() then return false end
   if not prevent_infinite_dancing() then return false end
   if is_up_stairs(0, 0) then return attempt("<", "attempt_escape") end
@@ -1062,6 +1116,33 @@ function attempt_escape()
 
   c_persist.flags.exclude = true
   return attempt("X<." .. ESCAPE_KEY, "attempt_escape")
+end
+
+function attempt_goal()
+  if you.confused() or you.mesmerised() then return false end
+  return attempt("G" .. goal() .. ENTER_KEY .. ENTER_KEY, "attempt_goal")
+end
+
+function goal()
+  if c_persist.found["Temple"] and c_persist.cleared_depth["Temple"] ~= 1 then
+    return "T"
+  end
+
+  if c_persist.found["Lair"] then
+    if c_persist.cleared_depth["Lair"] ~= 6 then
+      return "L" .. cleared_depth("Lair") + 1
+    end
+
+    if c_persist.found["Orc"] and c_persist.cleared_depth["Orc"] ~= 2 then
+      return "O" .. cleared_depth("Orc") + 1
+    end
+  end
+
+  if c_persist.cleared_depth["D"] ~= 15 then
+      return "D" .. cleared_depth("D") + 1
+  end
+
+  return ""
 end
 
 ---------------------------------------------------------------------------
@@ -1102,7 +1183,7 @@ function exclude_runed_doors(radius)
 end
 
 function clear_exclusions()
-  return attempt("X" .. control("e") .. ESCAPE_KEY)
+  return attempt("X" .. control("e") .. ESCAPE_KEY, "clear_exclusions")
 end
 
 ---------------------------------------------------------------------------
@@ -1110,7 +1191,7 @@ end
 ---------------------------------------------------------------------------
 
 function drop(item)
-  return attempt("d" .. letter(item) .. ENTER_KEY)
+  return attempt("d" .. letter(item) .. ENTER_KEY, "drop")
 end
 
 function can_drop_if_burdened(item)
@@ -1255,26 +1336,21 @@ function is_unneeded_duplicate(item)
 end
 
 function want_weapon(item)
-  if item.subtype() == "hand axe" and not item.fully_identified then
-    -- avoids early cursed hand axes
-    return false
-  end
+  -- avoids early cursed hand axes
+
+  if item.subtype() == "hand axe" and not item.fully_identified then return false end
+
   if item.class(true) == "weapon" then
     local best = best_damage(item.weap_skill)
-    if item.damage > best then
-      return true
-    end
-    if item.damage == best then
-      return item.branded
-    end
+    if item.damage > best then return true end
+    if item.damage == best then return item.branded end
   end
+
   return false
 end
 
 function want_armour(item)
-  if is_scales(item) then
-    return true
-  end
+  if is_scales(item) then return true end
 
   -- todo: this currently ignores branded robes
 
@@ -1448,8 +1524,8 @@ function burdened()
   return length(items.inventory()) > 47
 end
 
-function read_scroll(letter)
-  return can_read() and attempt("r" .. letter) 
+function read_scroll(slot)
+  return can_read() and attempt("r" .. slot, "read_scroll") 
 end
 
 ---------------------------------------------------------------------------
@@ -1510,7 +1586,10 @@ function best_kill_wand(radius)
 
   if radius <= 5 then result = find_wand("acid") end
   if radius <= 6 then result = result or find_wand("iceblast") end
-  result = result or find_wand("disintegration")
+
+  -- todo: does not work with plants in the way!
+  -- result = result or find_wand("disintegration")
+
   result = result or find_wand("flame")
   return result
 end
@@ -1725,21 +1804,26 @@ function upgrade_equipment()
           end
         end
       end
+
       -- rings are not fully supported yet
-      if is_ring(item) then
+
+      if is_ring(item) and (item.fully_identified or letter("of remove curse")) then
         if is_ring_missing() or
             not item.fully_identified then
           if equip_ring(item) then
             return true
           end
         end
+
         local left = items.equipped_at("Left Ring")
         if not (left and left.cursed) and
             compare_rings(item, left) > 0 and
             equip_ring(item) then
           return true
         end
+
         local right = items.equipped_at("Right Ring")
+
         if not (right and right.cursed) and
             compare_rings(item, right) > 0 and
             equip_ring(item) then
@@ -2243,6 +2327,14 @@ function c_message(text, channel)
     return
   end
 
+  if text:find("climb upwards") then
+
+    -- threat is used instead of adjusted_threat to estimate the threat with perfect health
+
+    if threat() >= IMPOSSIBLE then c_persist.flags.dangerous_down_stairs = true end
+    return
+  end
+
   if text:find("to the Ecumenical Temple") then
     c_persist.found["Temple"] = true
     return
@@ -2326,7 +2418,7 @@ function c_message(text, channel)
 
   if text:find("Blink to where?") then
     if not letter("of blinking") then
-      attempt("fy")
+      crawl.sendkeys("fy")
     end
 
     return
@@ -2390,7 +2482,11 @@ function species_has_mutation(mutation)
 end
 
 function debug()
-  print(letter("of identify"))
+
+  -- need to add pathfinding
+
+  local stairs = best_up_stairs()
+  print(stairs)
 end
 
 function persist_monsters(radius)

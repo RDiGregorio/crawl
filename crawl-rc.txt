@@ -662,6 +662,8 @@ function prevent_infinite_dancing(limit)
     return is_closer_traversable(point.x, point.y, monster:x_pos(), monster:y_pos())
   end
 
+  -- fixme: this does not always work
+
   if distance(monster:pos()) > 1 and not util.exists(adjacent_to(monster:pos()), is_closer_traversable_than_monster) then
     return false
   end
@@ -840,7 +842,7 @@ function is_scared()
 
   if util.exists(monsters(), is_summoned) then return true end
 
-  if you.status("berserk cooldown") then return threat >= NIGHTMARE end
+  if you.status("berserk cooldown") and not can_stair_dance() then return threat >= NIGHTMARE end
 
   return threat >= IMPOSSIBLE
 end
@@ -2440,6 +2442,12 @@ function c_message(text, channel)
     return
   end
 
+  if text:find("will find you") then
+    -- todo: handle zot clock
+
+    return
+  end
+
   if text:find("explore") or text:find("exploring") then
     exclude_runed_doors()
 
@@ -2577,7 +2585,7 @@ end
 ---------------------------------------------------------------------------
 
 function debug()
-  print(safest_point(1, stationary_monsters(), monsters()))
+  print(cleared_depth())
 end
 
 }
